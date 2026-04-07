@@ -1,0 +1,36 @@
+# ─── Python ─────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ─── Virtual Environment ───────────────
+.venv/
+venv/
+env/
+
+# ─── Environment Variables ────────────
+.env
+
+# ─── Database ─────────────────────────
+*.db
+*.sqlite3
+*.sqlite
+
+# ─── Logs ─────────────────────────────
+*.log
+
+# ─── OS files ─────────────────────────
+.DS_Store
+
+# ─── IDE ─────────────────────────────
+.vscode/
+.idea/
+
+# ─── Face Recognition Data ───────────
+known_faces/
+encodings.pickle
+
+# ─── Temporary Files ─────────────────
+temp/
+tmp/
