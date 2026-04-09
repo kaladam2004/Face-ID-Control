@@ -1,267 +1,249 @@
-# Face ID Attendance + Access Control System
+# 🏫 Dahua Attendance System
 
-A professional face recognition attendance system with role-based access control and turnstile integration.
+**Системаи пурраи назорати ҳозиршавӣ барои дастгоҳҳои Dahua Face Access Terminal**
 
-## Features
+---
 
-- **Real-time Face Recognition**: Detect and recognize employees from live camera feeds
-- **Multi-Camera Support**: USB webcams and RTSP IP cameras (Hikvision, etc.)
-- **Role-Based Access Control**: Different access rules for teachers, security, staff, etc.
-- **Automated Attendance Logging**: Save attendance with timestamps and snapshots
-- **Turnstile Integration**: Control physical access with relay/serial/HTTP APIs
-- **Anti-Spoofing**: Liveness detection to prevent photo/video attacks
-- **Duplicate Prevention**: Prevent multiple entries within timeout period
-- **Unknown Face Handling**: Log unrecognized faces for security
+## 📋 Имкониятҳо
 
-## Project Structure
+- ✅ Парсинги event-ҳои Dahua CGI stream (бе RTSP/OpenCV)
+- ✅ 2 дастгоҳ — IN (омадан) ва OUT (рафтан) — ҳамзамон
+- ✅ Мантиқи дуруст: аввалин IN ва охирин OUT
+- ✅ Санҷиши duplicate (configurable timeout)
+- ✅ Ҳисоби дермонӣ ва барвақт рафтан
+- ✅ Жадвали кории инфиродӣ барои ҳар корманд
+- ✅ Ҳисоботи Excel: рӯзона, ҳафтаина, моҳона
+- ✅ Telegram bot бо командаҳо ва огоҳиҳои автоматӣ
+- ✅ Auto-reconnect ба дастгоҳҳо
+- ✅ SQLite база (crash-safe WAL mode)
+- ✅ Production-ready: logging, error handling, 24/7
+
+---
+
+## 🗂️ Сохтори лоиҳа
 
 ```
-project/
+dahua_attendance/
+├── run_all.py              # 🚀 Нуқтаи оғоз (як команда)
+├── manage_employees.py     # 🛠️ CLI барои кормандон
+├── start.sh                # 🐚 Bash launcher
+├── requirements.txt
+├── .env                    # Танзимот (аз .env.example нусха кунед)
+├── .env.example
 │
-├── main.py                 # Main entry point (console mode)
-├── app.py                  # GUI entry point
-├── .env                    # Configuration file
-├── requirements.txt        # Python dependencies
+├── config/
+│   └── settings.py         # Ҳамаи танзимот аз .env
 │
-├── core/                   # Core modules
-│   ├── __init__.py
-│   ├── config.py           # Configuration management
-│   ├── database.py         # Database operations
-│   ├── camera.py           # Camera management
-│   ├── recognition.py      # Face recognition utilities
-│   ├── attendance.py       # Attendance logging
-│   ├── access_control.py   # Role-based access rules
-│   ├── liveness.py         # Anti-spoofing (placeholder)
-│   ├── turnstile.py        # Turnstile control
-│   └── engine.py           # Main processing engine
+├── core/
+│   ├── database.py         # DatabaseManager + schema
+│   ├── employees.py        # Идоракунии кормандон
+│   ├── attendance.py       # Мантиқи асосии ҳозиршавӣ
+│   └── event_parser.py     # Парсинги event Dahua
 │
-├── gui.py                  # Tkinter GUI
-├── photos/                 # Employee photos
-├── logs/                   # Attendance snapshots
-│   └── unknown/           # Unknown face snapshots
-├── data/                   # Database files
-│   └── attendance.db
+├── listeners/
+│   └── dahua_listener.py   # CGI stream listener + reconnect
+│
+├── bot/
+│   └── telegram_bot.py     # Telegram bot + notification service
+│
+├── reports/
+│   └── excel_report.py     # Excel ҳисобот (openpyxl)
+│
+├── utils/
+│   ├── logger.py           # Logging setup
+│   └── scheduler.py        # Огоҳиҳои автоматӣ
+│
+├── tests/
+│   ├── test_system.py      # Санҷишҳои воҳидӣ
+│   └── seed_data.py        # Маълумоти намунавӣ
+│
+├── data/                   # SQLite база
+├── logs/                   # Логҳо
+└── exports/                # Excel файлҳо
 ```
 
-## Installation
+---
 
-1. Install Python dependencies:
+## ⚡ Оғоз (Quick Start)
+
+### 1. Насб кардан
+
 ```bash
+git clone <repo>
+cd dahua_attendance
 pip install -r requirements.txt
+cp .env.example .env
 ```
 
-2. Configure cameras in `.env` file:
-```bash
-# Camera URLs (0 for webcam, rtsp:// for IP cameras)
-CAMERA_1_URL=0
-CAMERA_2_URL=rtsp://username:password@192.168.1.100:554/Streaming/Channels/101
+### 2. Танзими `.env`
 
-# Other settings
-DB_PATH=data/attendance.db
-CONFIDENCE_THRESHOLD=0.50
-DUPLICATE_TIMEOUT=30
-TURNSTILE_MODE=SIMULATE
+```env
+DEVICE_IN_IP=192.168.1.81
+DEVICE_OUT_IP=192.168.1.80
+DEVICE_IN_PASSWORD=admin123
+DEVICE_OUT_PASSWORD=admin123
+TELEGRAM_BOT_TOKEN=your_token_from_botfather
+TELEGRAM_ADMIN_CHAT_IDS=your_chat_id
+TIMEZONE=Asia/Dushanbe
 ```
 
-3. Initialize database:
-```bash
-python -c "from core.database import init_db; init_db()"
-```
+> **Telegram Chat ID** — боти `@userinfobot`-ро паём фиристед.
 
-## Adding Employees to Database
-
-### Option 1: Single Employee Registration
-
-Use the `add_employee.py` script to register new employees one by one:
+### 3. Иловакунии кормандон
 
 ```bash
-python add_employee.py
+python manage_employees.py add
 ```
 
-The script will:
-1. Ask for employee details (name, code, role, department)
-2. Open camera for face capture
-3. Process the face and save to database
-4. Store photo in `photos/` directory
+ё маълумоти намунавӣ:
+```bash
+python run_all.py --seed
+```
 
-### Option 2: Bulk Interactive Registration
-
-For registering multiple employees quickly with camera:
+### 4. Санҷиш
 
 ```bash
-python bulk_register.py interactive
+python tests/test_system.py
 ```
 
-This will:
-1. Open camera once for all employees
-2. Allow you to register multiple employees in sequence
-3. Press SPACE to capture photo for each employee
-4. Press ESC to skip photo (use dummy image)
-5. Type 'done' when finished
-
-### Option 3: Bulk Registration from CSV
-
-Create a CSV file with employee data and register all at once:
+### 5. Иҷро
 
 ```bash
-# First, create a sample CSV file
-python bulk_register.py sample
-
-# Edit the employees_sample.csv file with your data
-# Then register all employees
-python bulk_register.py csv employees_sample.csv
+python run_all.py
 ```
 
-CSV format:
-```csv
-full_name,employee_code,role,department
-Алиев Ахмад,T001,teacher,Mathematics
-Каримова Фатима,S001,security,
-```
-
-**Note:** CSV registration creates employees without photos. Use the interactive method to add photos later.
-
-### Option 4: Web Registration (Browser Camera)
-
-Run the new web registration app:
+ё
 
 ```bash
-python3 web_register.py
+bash start.sh
 ```
 
-If port 5000 is already in use, start on a different port:
+---
+
+## 🤖 Telegram Bot командаҳо
+
+| Команда | Тавсиф |
+|---------|--------|
+| `/today` | Ҳозиршавии имрӯз |
+| `/late` | Кӣ имрӯз дер кард |
+| `/absent` | Кӣ имрӯз ғоиб |
+| `/status` | Ҳолати дастгоҳҳо |
+| `/download_daily` | Excel рӯзона |
+| `/download_weekly` | Excel ҳафтаина |
+| `/download_monthly` | Excel моҳона |
+
+---
+
+## 🛠️ Идоракунии кормандон (CLI)
 
 ```bash
-python3 web_register.py 5001
+# Рӯйхати ҳама кормандон
+python manage_employees.py list
+
+# Иловакунии корманди нав
+python manage_employees.py add
+
+# Танзими жадвали корӣ
+python manage_employees.py set-schedule EMP001
+
+# Барориши ҳисобот
+python manage_employees.py report today
+python manage_employees.py report weekly
+python manage_employees.py report monthly
+python manage_employees.py report custom
 ```
 
-Open browser at:
+---
 
-```
-http://localhost:5000/register
-```
+## ⚙️ Параметрҳои run_all.py
 
-or if using port 5001:
-
-```
-http://localhost:5001/register
-```
-
-На странице заполните поля, нажмите «Сделать фото», затем «Добавить сотрудника».
-
-### Manual Registration (Alternative)
-
-You can also register employees programmatically:
-
-```python
-from models import register_employee
-import cv2
-
-# Capture frame from camera
-cap = cv2.VideoCapture(0)
-ret, frame = cap.read()
-cap.release()
-
-# Register employee
-result = register_employee(
-    full_name="John Doe",
-    employee_code="EMP001",
-    role="teacher",
-    department="Mathematics",
-    frame=frame
-)
-
-if result["success"]:
-    print("Employee registered successfully!")
-else:
-    print(f"Error: {result['message']}")
+```bash
+python run_all.py                  # Режими стандартӣ
+python run_all.py --test-mode      # Бе дастгоҳ (барои тест)
+python run_all.py --seed           # Маълумоти намунавӣ
+python run_all.py --no-bot         # Бе Telegram bot
+python run_all.py --no-listeners   # Бе listener (танҳо bot)
 ```
 
-## Database Schema
+---
 
-### Employees Table
-- `id`: Primary key
-- `employee_code`: Unique employee identifier
-- `full_name`: Employee name
-- `role`: Role (teacher, security, reception, staff)
-- `department`: Optional department
-- `face_encoding`: Serialized face encoding
-- `photo_path`: Path to photo
-- `is_active`: Active status
-- `created_at`: Registration timestamp
+## 🗃️ Ҷадвалҳои база
 
-### Attendance Logs Table
-- `id`: Primary key
-- `employee_id`: Foreign key to employees
-- `employee_code`: Employee code
-- `full_name`: Employee name
-- `role`: Employee role
-- `confidence`: Recognition confidence
-- `camera_ip`: Camera identifier
-- `snapshot_path`: Attendance photo path
-- `status`: GRANTED/DENIED/UNKNOWN
-- `event_type`: ENTRY/EXIT
-- `created_at`: Event timestamp
+| Ҷадвал | Тавсиф |
+|--------|--------|
+| `employees` | Маълумоти кормандон |
+| `schedules` | Жадвали корӣ |
+| `raw_events` | Event-ҳои хоми Dahua |
+| `daily_attendance` | Ҳозиршавии рӯзона |
+| `notifications_log` | Логи огоҳиҳо |
+| `system_settings` | Танзимоти система |
 
-### Unknown Logs Table
-- `id`: Primary key
-- `camera_ip`: Camera identifier
-- `snapshot_path`: Unknown face photo
-- `created_at`: Detection timestamp
+---
 
-## Access Control Rules
+## 🔒 Мантиқи ҳозиршавӣ
 
-- **Security**: 24/7 access
-- **Teacher**: School hours (07:00-16:00)
-- **Assistant**: Work hours (08:00-18:00)
-- **Reception**: Work hours (08:00-18:00)
-- **Staff**: Work hours (08:00-18:00)
+```
+IN device (192.168.1.81):   08:01 → 08:03 → 08:05
+                            ↓
+                        first_in = 08:01 (танҳо аввалин)
 
-## Turnstile Integration
+OUT device (192.168.1.80):  10:20 → 14:02 → 16:15
+                            ↓
+                        last_out = 16:15 (танҳо охирин)
 
-Configure `TURNSTILE_MODE` in `.env`:
+Дермонӣ:    first_in (08:12) - work_start (08:00) = 12 дақ
+Барвақт:    work_end (16:00) - last_out (15:42) = 18 дақ
+```
 
-- `SIMULATE`: Print messages (default)
-- `RELAY`: GPIO control (Raspberry Pi)
-- `SERIAL`: Serial port control
-- `HTTP`: HTTP API calls
+---
 
-## Anti-Spoofing
+## 📊 Огоҳиҳои автоматии Telegram
 
-The system includes a placeholder for liveness detection. To implement:
+| Вақт (пешфарз) | Огоҳӣ |
+|----------------|-------|
+| `08:15` | Санҷиши дермонӣ |
+| `09:00` | Summary-и субҳ |
+| `17:00` | Summary-и бегоҳ |
+| `23:55` | Ғоибонро сабт кун |
 
-1. Replace `core/liveness.py` with actual detection logic
-2. Use techniques like:
-   - Blink detection
-   - Head movement analysis
-   - Texture analysis
-   - Frequency domain analysis
+---
 
-## Performance Optimization
+## 🔧 Насб ҳамчун systemd service (Linux)
 
-- Frame skipping (process every N frames)
-- Frame resizing before processing
-- Efficient encoding storage
-- Duplicate entry prevention
+```ini
+# /etc/systemd/system/attendance.service
+[Unit]
+Description=Dahua Attendance System
+After=network.target
 
-## Security Considerations
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/dahua_attendance
+ExecStart=/usr/bin/python3 run_all.py
+Restart=always
+RestartSec=10
 
-- Store face encodings securely
-- Implement proper access logging
-- Regular backup of database
-- Monitor unknown face detections
-- Update liveness detection regularly
+[Install]
+WantedBy=multi-user.target
+```
 
-## Development
+```bash
+sudo systemctl enable attendance
+sudo systemctl start attendance
+sudo systemctl status attendance
+```
 
-The system is modular and extensible:
+---
 
-- Add new camera types in `core/camera.py`
-- Customize access rules in `core/access_control.py`
-- Extend database schema as needed
-- Add new roles and permissions
-- Integrate with existing HR systems
+## 📦 Вобастагиҳо
 
-## License
-
-This project is for educational and professional use. Ensure compliance with local privacy laws and regulations.
+```
+python-dotenv       # Танзимоти .env
+requests            # HTTP барои Dahua CGI
+python-telegram-bot # Telegram bot
+openpyxl            # Excel
+pandas              # Маълумоти ҷадвалӣ
+schedule            # Scheduler
+pytz                # Timezone
+```
