@@ -63,6 +63,8 @@ class AttendanceProcessor:
         timeout = timedelta(minutes=settings.DUPLICATE_TIMEOUT_MINUTES)
 
         if last_event and (event_local - last_event) < timeout:
+            elapsed = int((event_local - last_event).total_seconds())
+            print(f"\033[90m[ТАКРОР РАД]  ID={user_id}  ({device_direction})  +{elapsed}с пеш аллакай сабт шуд\033[0m", flush=True)
             logger.info(f"Duplicate ignored: user_id={user_id} ({device_direction})")
             return False
 
@@ -101,7 +103,12 @@ class AttendanceProcessor:
                 device_direction,
             )
 
-            logger.info(f"[{device_direction}] EMPLOYEE: {employee['full_name']} @ {event_datetime_str}")
+            arrow = "→ ДАРОМАД" if device_direction == "IN" else "← БАРОМАД"
+            name  = employee["full_name"]
+            pos   = employee.get("position", "")
+            msg   = f"[{arrow}]  ID={user_id}  |  {name}  ({pos})  |  {event_datetime_str}"
+            print(f"\033[92m{msg}\033[0m", flush=True)   # green
+            logger.info(f"[{device_direction}] КОРМАНД: {name} (id={user_id}) @ {event_datetime_str}")
             return True
 
         # =====================================================
@@ -127,7 +134,10 @@ class AttendanceProcessor:
             ),
         )
 
-        logger.info(f"[{device_direction}] МЕҲМОН / STUDENT: user_id={user_id} @ {event_datetime_str}")
+        arrow = "→ ДАРОМАД" if device_direction == "IN" else "← БАРОМАД"
+        msg   = f"[{arrow}]  ID={user_id}  |  МЕҲМОН/ХОНАНДА  |  {event_datetime_str}"
+        print(f"\033[93m{msg}\033[0m", flush=True)   # yellow
+        logger.info(f"[{device_direction}] МЕҲМОН: user_id={user_id} @ {event_datetime_str}")
         return True
 
     def _update_daily_attendance(self, employee_id: str, att_date: date, event_datetime_str: str, direction: str):

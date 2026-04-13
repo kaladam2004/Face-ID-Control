@@ -76,16 +76,25 @@ class DahuaListener:
                 time.sleep(self.reconnect_delay)
 
     def _process_block(self, text):
-        if "Code=_DoorFace_" not in text:
+        if not text.strip():
             return
 
+        # Heartbeat-ро нодида мегирем
+        if text.strip() == "Heartbeat":
+            return
+
+        # Агар UserID дошта бошад — event-и дар
         m = re.search(r"data=(\{.*\})", text, re.DOTALL)
         if not m:
+            # Лоақал Code-ро нишон медиҳем
+            if "Code=" in text:
+                logger.debug(f"[{self.name}] Event бе data: {text[:120]}")
             return
 
         try:
             data = json.loads(m.group(1))
-        except:
+        except Exception as e:
+            logger.warning(f"[{self.name}] JSON parse error: {e} | text: {text[:200]}")
             return
 
         event = {
@@ -98,7 +107,8 @@ class DahuaListener:
             "open_method": data.get("OpenDoorMethod", 0),
         }
 
-        logger.info(f"[{self.name}] FACE EVENT: {event['user_id']}")
+        logger.info(f"[{self.name}] FACE EVENT: user_id={event['user_id']} method={event['open_method']} similarity={event['similarity']}")
+        logger.debug(f"[{self.name}] Full data: {data}")
 
         if self.callback:
             self.callback(event)

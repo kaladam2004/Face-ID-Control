@@ -84,14 +84,14 @@ def run_listeners(attendance_proc, args):
     mgr = ListenerManager()
 
     mgr.add(DahuaListener(
-        name="IN",
+        name="OUT",
         curl_cmd=entry_cmd,
         callback=on_event,
         reconnect_delay=settings.RECONNECT_DELAY_SECONDS,
     ))
 
     mgr.add(DahuaListener(
-        name="OUT",
+        name="IN",
         curl_cmd=exit_cmd,
         callback=on_event,
         reconnect_delay=settings.RECONNECT_DELAY_SECONDS,
