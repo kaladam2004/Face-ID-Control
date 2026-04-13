@@ -261,7 +261,7 @@ class AttendanceProcessor:
         return self.db.fetchall("""
             SELECT e.full_name
             FROM employees e
-            WHERE e.is_active=1
+            WHERE e.status='active'
               AND e.employee_id NOT IN (
                   SELECT employee_id
                   FROM daily_attendance
@@ -291,7 +291,54 @@ class AttendanceProcessor:
             LEFT JOIN daily_attendance a
               ON e.employee_id = a.employee_id
              AND substr(a.attendance_date,1,7)=?
-            WHERE e.is_active=1
+            WHERE e.status='active'
             GROUP BY e.employee_id, e.full_name
             ORDER BY e.full_name
         """, (ym,))
+
+    def get_daily_report(self, report_date):
+        """Ҳисоботи рӯзона — ҳамаи кормандон бо статус"""
+        date_str = report_date.strftime("%Y-%m-%d") if hasattr(report_date, "strftime") else report_date
+        rows = self.db.fetchall("""
+            SELECT
+                e.employee_id,
+                e.full_name,
+                e.position,
+                a.first_in,
+                a.last_out,
+                COALESCE(a.late_minutes, 0)    AS late_minutes,
+                COALESCE(a.early_leave_min, 0) AS early_leave_min,
+                COALESCE(a.status, 'absent')   AS status
+            FROM employees e
+            LEFT JOIN daily_attendance a
+              ON e.employee_id = a.employee_id
+             AND a.attendance_date = ?
+            WHERE e.status = 'active'
+            ORDER BY e.full_name
+        """, (date_str,))
+        return [dict(r) for r in rows]
+
+    def get_period_report(self, start_date, end_date):
+        """Ҳисоботи давра — ҳар рӯзи корӣ барои ҳар корманд"""
+        start_str = start_date.strftime("%Y-%m-%d") if hasattr(start_date, "strftime") else start_date
+        end_str   = end_date.strftime("%Y-%m-%d")   if hasattr(end_date,   "strftime") else end_date
+        rows = self.db.fetchall("""
+            SELECT
+                e.employee_id,
+                e.full_name,
+                e.position,
+                a.attendance_date,
+                a.first_in,
+                a.last_out,
+                COALESCE(a.late_minutes, 0)    AS late_minutes,
+                COALESCE(a.early_leave_min, 0) AS early_leave_min,
+                COALESCE(a.status, 'absent')   AS status
+            FROM employees e
+            LEFT JOIN daily_attendance a
+              ON e.employee_id = a.employee_id
+             AND a.attendance_date BETWEEN ? AND ?
+            WHERE e.status = 'active'
+              AND a.attendance_date IS NOT NULL
+            ORDER BY e.full_name, a.attendance_date
+        """, (start_str, end_str))
+        return [dict(r) for r in rows]

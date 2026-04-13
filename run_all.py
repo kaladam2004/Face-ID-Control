@@ -16,7 +16,7 @@ from config import settings
 from core.database import DatabaseManager
 from core.employees import EmployeeManager
 from core.attendance import AttendanceProcessor
-from listeners.dahua_listener import DahuaListener
+from listeners.dahua_listener import DahuaListener, ListenerManager
 from bot.telegram_bot import build_bot_app, NotificationService
 from utils.scheduler import AttendanceScheduler
 
@@ -63,9 +63,7 @@ def print_banner():
 def run_listeners(attendance_proc, args):
     if args.no_listeners or args.test_mode:
         logger.info("Device listeners disabled")
-        return []
-
-    listeners = []
+        return None
 
     def on_event(event_dict):
         try:
@@ -81,33 +79,30 @@ def run_listeners(attendance_proc, args):
 
     if not entry_cmd or not exit_cmd:
         logger.error("ENTRY_CURL_CMD or EXIT_CURL_CMD not found in .env")
-        return []
+        return None
 
-    entry_listener = DahuaListener(
+    mgr = ListenerManager()
+
+    mgr.add(DahuaListener(
         name="IN",
         curl_cmd=entry_cmd,
         callback=on_event,
         reconnect_delay=settings.RECONNECT_DELAY_SECONDS,
-    )
+    ))
 
-    exit_listener = DahuaListener(
+    mgr.add(DahuaListener(
         name="OUT",
         curl_cmd=exit_cmd,
         callback=on_event,
         reconnect_delay=settings.RECONNECT_DELAY_SECONDS,
-    )
+    ))
 
-    entry_listener.start()
-    exit_listener.start()
-
-    listeners.append(entry_listener)
-    listeners.append(exit_listener)
-
+    mgr.start_all()
     logger.info("Started 2 curl-based Dahua listeners")
-    return listeners
+    return mgr
 
 
-async def run_bot_async(attendance_proc, args):
+async def run_bot_async(attendance_proc, args, listener_mgr=None):
     global notif_service, bot_loop
     bot_loop = asyncio.get_event_loop()
 
@@ -127,7 +122,7 @@ async def run_bot_async(attendance_proc, args):
             await asyncio.sleep(1)
         return
 
-    app = build_bot_app(attendance_proc, None)
+    app = build_bot_app(attendance_proc, listener_mgr)
 
     async with app:
         await app.start()
@@ -169,19 +164,19 @@ def main():
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
 
-    listeners = run_listeners(att_proc, args)
+    listener_mgr = run_listeners(att_proc, args)
 
     logger.info(f"Active employees: {len(employees)}")
     logger.info(f"Work schedule: {settings.WORK_START_TIME}–{settings.WORK_END_TIME} ({settings.WORK_DAYS_STR})")
     logger.info(f"Duplicate timeout: {settings.DUPLICATE_TIMEOUT_MINUTES} min")
 
     try:
-        asyncio.run(run_bot_async(att_proc, args))
+        asyncio.run(run_bot_async(att_proc, args, listener_mgr))
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt received")
     finally:
-        for listener in listeners:
-            listener.stop()
+        if listener_mgr:
+            listener_mgr.stop_all()
         logger.info("✅ System stopped cleanly")
 
 

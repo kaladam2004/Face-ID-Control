@@ -1,2 +1,2 @@
-from .dahua_listener import DahuaListener
+from .dahua_listener import DahuaListener, ListenerManager
 __all__ = ["DahuaListener", "ListenerManager"]

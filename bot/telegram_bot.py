@@ -1,7 +1,5 @@
 """
-bot/telegram_bot.py — Telegram Bot бо ReplyKeyboardMarkup
-Тугмаҳои доимӣ дар поёни экран нишон дода мешаванд.
-Навиштаи нав: рӯйхати баромадаҳо ва набаромадаҳо илова шуданд.
+bot/telegram_bot.py — Telegram Bot (English UI)
 """
 import logging
 from datetime import date
@@ -30,21 +28,21 @@ logger = logging.getLogger(__name__)
 _attendance_processor = None
 _listener_manager = None
 
-# ── Callback data (InlineKeyboard-и ҳисобот) ────────────────────────
+# ── Callback data ────────────────────────────────────────
 CB_DL_DAILY   = "cb_dl_daily"
 CB_DL_WEEKLY  = "cb_dl_weekly"
 CB_DL_MONTHLY = "cb_dl_monthly"
 CB_STATUS     = "cb_status"
 
-# ── Матни тугмаҳои Reply (точно ин матн MessageHandler-ро trigger мекунад) ──
-BTN_TODAY        = "📋 Ҳозиршавии имрӯз"
-BTN_LATE         = "⏰ Дермондагон"
-BTN_ABSENT       = "❌ Ғоибон"
-BTN_DEPARTURES   = "🚪 Рӯйхати баромадаҳо"
-BTN_NOT_DEPARTED = "🏢 Набаромадагон"
-BTN_DEVICES      = "🔌 Дастгоҳҳо"
-BTN_REPORTS      = "📊 Ҳисобот / Excel"
-BTN_HELP         = "❓ Кӯмак"
+# ── Reply button labels ──────────────────────────────────
+BTN_TODAY        = "📋 Present Today"
+BTN_LATE         = "⏰ Late"
+BTN_ABSENT       = "❌ Absent"
+BTN_DEPARTURES   = "🚪 Departed"
+BTN_NOT_DEPARTED = "🏢 Still Inside"
+BTN_DEVICES      = "🔌 Devices"
+BTN_REPORTS      = "📊 Reports"
+BTN_HELP         = "❓ Help"
 
 
 def set_processors(attendance_proc, listener_mgr=None):
@@ -68,68 +66,53 @@ def _fmt(val: Optional[str]) -> str:
         return str(val)
 
 
+def _pos(r) -> str:
+    return r.get("position") or "—"
+
+
 # ════════════════════════════════════════════════════════
-# КЛАВИАТУРҲО
+# KEYBOARDS
 # ════════════════════════════════════════════════════════
 
 def _reply_keyboard() -> ReplyKeyboardMarkup:
-    """
-    Клавиатураи доимӣ — дар поёни экран ҳамеша нишон дода мешавад.
-    Сатр 1: Ҳозиршавӣ | Дермондагон | Ғоибон
-    Сатр 2: Баромадаҳо | Набаромадагон | Дастгоҳҳо
-    Сатр 3: Ҳисобот / Excel | Кӯмак
-    """
     return ReplyKeyboardMarkup(
         keyboard=[
-            [
-                KeyboardButton(BTN_TODAY),
-                KeyboardButton(BTN_LATE),
-                KeyboardButton(BTN_ABSENT),
-            ],
-            [
-                KeyboardButton(BTN_DEPARTURES),
-                KeyboardButton(BTN_NOT_DEPARTED),
-                KeyboardButton(BTN_DEVICES),
-            ],
-            [
-                KeyboardButton(BTN_REPORTS),
-                KeyboardButton(BTN_HELP),
-            ],
+            [KeyboardButton(BTN_TODAY), KeyboardButton(BTN_LATE), KeyboardButton(BTN_ABSENT)],
+            [KeyboardButton(BTN_DEPARTURES), KeyboardButton(BTN_NOT_DEPARTED), KeyboardButton(BTN_DEVICES)],
+            [KeyboardButton(BTN_REPORTS), KeyboardButton(BTN_HELP)],
         ],
-        resize_keyboard=True,       # Андозаро мувофиқ кун
-        # persistent=True,            # Ҳамеша нишон деҳ
-        input_field_placeholder="Тугмаро пахш кунед...",
+        resize_keyboard=True,
+        input_field_placeholder="Press a button...",
     )
 
 
 def _reports_inline() -> InlineKeyboardMarkup:
-    """Inline тугмаҳои Excel"""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📊 Excel рӯзона",    callback_data=CB_DL_DAILY)],
+        [InlineKeyboardButton("📊 Daily Excel",   callback_data=CB_DL_DAILY)],
         [
-            InlineKeyboardButton("📅 Excel ҳафтаина", callback_data=CB_DL_WEEKLY),
-            InlineKeyboardButton("🗓 Excel моҳона",   callback_data=CB_DL_MONTHLY),
+            InlineKeyboardButton("📅 Weekly Excel",  callback_data=CB_DL_WEEKLY),
+            InlineKeyboardButton("🗓 Monthly Excel", callback_data=CB_DL_MONTHLY),
         ],
-        [InlineKeyboardButton("🔌 Ҳолати дастгоҳҳо", callback_data=CB_STATUS)],
+        [InlineKeyboardButton("🔌 Device Status", callback_data=CB_STATUS)],
     ])
 
 
 def _status_icon(status: Optional[str]) -> str:
     return {
-        "present":       "✅",
-        "late":          "⏰",
-        "early_leave":   "🚪",
-        "late_and_early":"⚠️",
-        "absent":        "❌",
+        "present":        "✅",
+        "late":           "⏰",
+        "early_leave":    "🚪",
+        "late_and_early": "⚠️",
+        "absent":         "❌",
     }.get(status or "", "•")
 
 
 def _menu_text() -> str:
     today_str = date.today().strftime("%d.%m.%Y — %A")
     return (
-        f"🏫 *Системаи назорати ҳозиршавӣ*\n"
+        f"🏫 *Attendance Control System*\n"
         f"📅 _{today_str}_\n\n"
-        "Тугмаҳои поён барои идоракунӣ истифода баред 👇"
+        "Use the buttons below 👇"
     )
 
 
@@ -139,7 +122,7 @@ def _menu_text() -> str:
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update):
-        await update.message.reply_text("⛔ Дастрасӣ рад шуд.")
+        await update.message.reply_text("⛔ Access denied.")
         return
     await update.message.reply_text(
         _menu_text(),
@@ -159,42 +142,31 @@ async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ════════════════════════════════════════════════════════
-# HANDLER-И ТУГМАҲОИ REPLY
+# REPLY BUTTON HANDLER
 # ════════════════════════════════════════════════════════
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Ҳамаи тугмаҳои Reply дар ин ҷо коркард мешаванд"""
     if not _is_admin(update):
         return
-
     text = update.message.text
-
-    if text == BTN_TODAY:
-        await _show_today(update)
-    elif text == BTN_LATE:
-        await _show_late(update)
-    elif text == BTN_ABSENT:
-        await _show_absent(update)
-    elif text == BTN_DEPARTURES:
-        await _show_departures(update)
-    elif text == BTN_NOT_DEPARTED:
-        await _show_not_departed(update)
-    elif text == BTN_DEVICES:
-        await _show_devices(update)
-    elif text == BTN_REPORTS:
-        await _show_reports_menu(update)
-    elif text == BTN_HELP:
-        await _show_help(update)
+    if   text == BTN_TODAY:        await _show_today(update)
+    elif text == BTN_LATE:         await _show_late(update)
+    elif text == BTN_ABSENT:       await _show_absent(update)
+    elif text == BTN_DEPARTURES:   await _show_departures(update)
+    elif text == BTN_NOT_DEPARTED: await _show_not_departed(update)
+    elif text == BTN_DEVICES:      await _show_devices(update)
+    elif text == BTN_REPORTS:      await _show_reports_menu(update)
+    elif text == BTN_HELP:         await _show_help(update)
 
 
 # ════════════════════════════════════════════════════════
-# МАНТИҚИ ҲАР ТУГМА
+# BUTTON LOGIC
 # ════════════════════════════════════════════════════════
 
 async def _show_today(update: Update):
-    """📋 Ҳозиршавии имрӯз — ҳама ки омаданд"""
+    """📋 Present Today"""
     if not _attendance_processor:
-        await update.message.reply_text("❗ Система тайёр нест.")
+        await update.message.reply_text("❗ System not ready.")
         return
 
     records = _attendance_processor.get_today_present()
@@ -202,39 +174,38 @@ async def _show_today(update: Update):
 
     if not records:
         await update.message.reply_text(
-            f"📋 *Ҳозиршавии имрӯз* — {today}\n\nҲеҷ кас ҳозир нашудааст.",
+            f"📋 *Present Today* — {today}\n\nNo one has checked in yet.",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
 
-    lines = [f"📋 *Ҳозиршавии имрӯз* — {today}\n"]
-    lines.append(f"_Ҳамаи кормандон: {len(records)} нафар_\n")
+    lines = [f"📋 *Present Today* — {today}\n"]
+    lines.append(f"_Total: {len(records)} staff_\n")
 
     for i, r in enumerate(records, 1):
-        ic = _status_icon(r.get("status"))
-        fi = _fmt(r.get("first_in"))
-        lo = _fmt(r.get("last_out"))
-        name = r["full_name"]
-        pos  = r.get("position") or "—"
+        ic   = _status_icon(r.get("status"))
+        fi   = _fmt(r.get("first_in"))
+        lo   = _fmt(r.get("last_out"))
         late = r.get("late_minutes") or 0
         early= r.get("early_leave_min") or 0
 
         extra = ""
-        if late  > 0: extra += f" ⏰+{late}д"
-        if early > 0: extra += f" 🚪-{early}д"
+        if late  > 0: extra += f" ⏰+{late}m"
+        if early > 0: extra += f" 🚪-{early}m"
 
-        lines.append(f"{i}. {ic} *{name}*{extra}\n   _{pos}_\n   Омад: `{fi}` | Рафт: `{lo}`")
+        lines.append(
+            f"{i}. {ic} *{r['full_name']}*{extra}\n"
+            f"   _{_pos(r)}_\n"
+            f"   In: `{fi}` | Out: `{lo}`"
+        )
 
-    await update.message.reply_text(
-        "\n".join(lines),
-        parse_mode=ParseMode.MARKDOWN,
-    )
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
 
 async def _show_late(update: Update):
-    """⏰ Дермондагон"""
+    """⏰ Late arrivals"""
     if not _attendance_processor:
-        await update.message.reply_text("❗ Система тайёр нест.")
+        await update.message.reply_text("❗ System not ready.")
         return
 
     records = _attendance_processor.get_today_lates()
@@ -242,27 +213,27 @@ async def _show_late(update: Update):
 
     if not records:
         await update.message.reply_text(
-            f"⏰ *Дермондагон* — {today}\n\n✅ Ҳеҷ кас дер накардааст!",
+            f"⏰ *Late* — {today}\n\n✅ No one was late today!",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
 
-    lines = [f"⏰ *Дермондагон* — {today}\n"]
+    lines = [f"⏰ *Late Arrivals* — {today}\n"]
     for i, r in enumerate(records, 1):
         lines.append(
             f"{i}. *{r['full_name']}*\n"
-            f"   _{r.get('position') or '—'}_\n"
-            f"   Омад: `{_fmt(r.get('first_in'))}` | Дерӣ: *{r.get('late_minutes', 0)} дақиқа*"
+            f"   _{_pos(r)}_\n"
+            f"   In: `{_fmt(r.get('first_in'))}` | Late: *{r.get('late_minutes', 0)} min*"
         )
 
-    lines.append(f"\n_Ҷамъ: {len(records)} нафар_")
+    lines.append(f"\n_Total: {len(records)} staff_")
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
 
 async def _show_absent(update: Update):
-    """❌ Ғоибон"""
+    """❌ Absent staff"""
     if not _attendance_processor:
-        await update.message.reply_text("❗ Система тайёр нест.")
+        await update.message.reply_text("❗ System not ready.")
         return
 
     records = _attendance_processor.get_today_absents()
@@ -270,33 +241,28 @@ async def _show_absent(update: Update):
 
     if not records:
         await update.message.reply_text(
-            f"❌ *Ғоибон* — {today}\n\n✅ Ҳама ҳозир шуданд!",
+            f"❌ *Absent* — {today}\n\n✅ All staff present!",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
 
-    lines = [f"❌ *Ғоибон* — {today}\n"]
+    lines = [f"❌ *Absent* — {today}\n"]
     for i, r in enumerate(records, 1):
-        lines.append(f"{i}. *{r['full_name']}*\n   _{r.get('position') or '—'}_")
+        lines.append(f"{i}. *{r['full_name']}*\n   _{_pos(r)}_")
 
-    lines.append(f"\n_Ҷамъ: {len(records)} нафар_")
+    lines.append(f"\n_Total: {len(records)} staff_")
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
 
 async def _show_departures(update: Update):
-    """
-    🚪 Рӯйхати баромадаҳо —
-    Ҳамаи кормандоне ки last_out дорад (баромадаанд).
-    Тартиб: охирин баромада аввал.
-    """
+    """🚪 Departed staff — have last_out"""
     if not _attendance_processor:
-        await update.message.reply_text("❗ Система тайёр нест.")
+        await update.message.reply_text("❗ System not ready.")
         return
 
     today_str = date.today().strftime("%Y-%m-%d")
     today_fmt = date.today().strftime("%d.%m.%Y")
 
-    # Ҳамаи имрӯза ки last_out дорад
     rows = _attendance_processor.db.fetchall(
         """SELECT e.full_name, e.position,
                   da.first_in, da.last_out, da.status,
@@ -312,33 +278,30 @@ async def _show_departures(update: Update):
 
     if not rows:
         await update.message.reply_text(
-            f"🚪 *Рӯйхати баромадаҳо* — {today_fmt}\n\nҲанӯз ҳеҷ кас барнагаштааст.",
+            f"🚪 *Departed* — {today_fmt}\n\nNo one has left yet.",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
 
-    lines = [f"🚪 *Рӯйхати баромадаҳо* — {today_fmt}\n"]
-    lines.append(f"_Баромадагон: {len(rows)} нафар_\n")
+    lines = [f"🚪 *Departed* — {today_fmt}\n"]
+    lines.append(f"_Total: {len(rows)} staff_\n")
 
     for i, r in enumerate(rows, 1):
         early = r.get("early_leave_min") or 0
-        early_str = f" ⚠️ барвақт: {early} дақ" if early > 0 else ""
+        early_str = f" ⚠️ early: {early}m" if early > 0 else ""
         lines.append(
             f"{i}. *{r['full_name']}*\n"
             f"   _{r.get('position') or '—'}_\n"
-            f"   Омад: `{_fmt(r.get('first_in'))}` | Рафт: `{_fmt(r.get('last_out'))}`{early_str}"
+            f"   In: `{_fmt(r.get('first_in'))}` | Out: `{_fmt(r.get('last_out'))}`{early_str}"
         )
 
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
 
 async def _show_not_departed(update: Update):
-    """
-    🏢 Набаромадагон —
-    Кормандоне ки first_in дорад (омадаанд) аммо last_out надорад (ҳанӯз дар корхона).
-    """
+    """🏢 Still inside — have first_in but no last_out"""
     if not _attendance_processor:
-        await update.message.reply_text("❗ Система тайёр нест.")
+        await update.message.reply_text("❗ System not ready.")
         return
 
     today_str = date.today().strftime("%Y-%m-%d")
@@ -359,85 +322,83 @@ async def _show_not_departed(update: Update):
 
     if not rows:
         await update.message.reply_text(
-            f"🏢 *Набаромадагон* — {today_fmt}\n\nҲама аллакай рафтаанд.",
+            f"🏢 *Still Inside* — {today_fmt}\n\nEveryone has left.",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
 
-    lines = [f"🏢 *Набаромадагон* — {today_fmt}\n"]
-    lines.append(f"_Ҳанӯз дар корхона: {len(rows)} нафар_\n")
+    lines = [f"🏢 *Still Inside* — {today_fmt}\n"]
+    lines.append(f"_Total: {len(rows)} staff_\n")
 
     for i, r in enumerate(rows, 1):
         late = r.get("late_minutes") or 0
-        late_str = f" ⏰ дер: {late} дақ" if late > 0 else ""
+        late_str = f" ⏰ late: {late}m" if late > 0 else ""
         lines.append(
             f"{i}. *{r['full_name']}*\n"
             f"   _{r.get('position') or '—'}_\n"
-            f"   Омад: `{_fmt(r.get('first_in'))}`{late_str}"
+            f"   In: `{_fmt(r.get('first_in'))}`{late_str}"
         )
 
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
 
 async def _show_devices(update: Update):
-    """🔌 Ҳолати дастгоҳҳо"""
+    """🔌 Device status"""
     if not _listener_manager:
         await update.message.reply_text(
-            "ℹ️ Маълумоти дастгоҳ мавҷуд нест.\n"
-            "_Listener-ҳо оғоз нашудаанд._",
+            "ℹ️ No device info available.\n_Listeners not started._",
             parse_mode=ParseMode.MARKDOWN,
         )
         return
 
     status = _listener_manager.status()
-    lines = ["🔌 *Ҳолати дастгоҳҳо*\n"]
+    lines = ["🔌 *Device Status*\n"]
 
     for direction, info in status.items():
         icon  = "🟢" if info["connected"] else "🔴"
-        state = "Васл ✓" if info["connected"] else "Қатъ ✗"
-        dev_label = "ОМАДАН (IN)" if direction == "IN" else "РАФТАН (OUT)"
+        state = "Connected ✓" if info["connected"] else "Disconnected ✗"
+        label = "ENTRY (IN)" if direction == "IN" else "EXIT (OUT)"
         lines.append(
-            f"{icon} *{dev_label}*\n"
+            f"{icon} *{label}*\n"
             f"   IP: `{info['ip']}`\n"
-            f"   Ҳолат: _{state}_\n"
-            f"   Васлшавӣ: {info['reconnect_count']} бор"
+            f"   Status: _{state}_\n"
+            f"   Reconnects: {info['reconnect_count']}"
         )
 
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
 
 async def _show_reports_menu(update: Update):
-    """📊 Менюи ҳисобот — Inline тугмаҳо"""
+    """📊 Reports menu"""
     await update.message.reply_text(
-        "📊 *Ҳисобот / Excel*\n\n"
-        "Навъи ҳисобот интихоб кунед:",
+        "📊 *Reports / Excel*\n\nSelect report type:",
         reply_markup=_reports_inline(),
         parse_mode=ParseMode.MARKDOWN,
     )
 
 
 async def _show_help(update: Update):
-    """❓ Кӯмак"""
+    """❓ Help"""
     lines = [
-        "❓ *Роҳнамои Bot*\n",
-        "📋 *Ҳозиршавии имрӯз* — ҳама омадагон бо вақт",
-        "⏰ *Дермондагон* — кӣ дер карда бо дақиқа",
-        "❌ *Ғоибон* — кӣ имрӯз нашудааст",
-        "🚪 *Рӯйхати баромадаҳо* — кӣ аллакай рафтааст",
-        "🏢 *Набаромадагон* — кӣ ҳанӯз дар корхона аст",
-        "🔌 *Дастгоҳҳо* — ҳолати дастгоҳҳои IN/OUT",
-        "📊 *Ҳисобот / Excel* — файлҳои Excel барориш",
+        "❓ *Bot Guide*\n",
+        "📋 *Present Today* — who checked in with time",
+        "⏰ *Late* — who arrived late & by how many min",
+        "❌ *Absent* — who hasn't shown up today",
+        "🚪 *Departed* — who has already left",
+        "🏢 *Still Inside* — who is still at work",
+        "🔌 *Devices* — IN/OUT camera status",
+        "📊 *Reports* — download Excel files",
         "",
-        "💡 _Ҳамаи тугмаҳо дар поёни экран доимӣ нишон дода мешаванд_",
+        "💡 _All buttons are always visible at the bottom_",
         "",
-        "⚙️ *Команда-ҳо:*",
-        "/start — Менюро кушоед",
-        "/menu — Менюро навсозед",
-        "/today /late /absent — Маълумоти зуд",
-        "/status — Дастгоҳҳо",
-        "/download\\_daily — Excel рӯзона",
-        "/download\\_weekly — Excel ҳафтаина",
-        "/download\\_monthly — Excel моҳона",
+        "⚙️ *Commands:*",
+        "/start — open menu",
+        "/menu — refresh menu",
+        "/today /late /absent — quick info",
+        "/status — device status",
+        "/download\\_daily — daily Excel",
+        "/download\\_weekly — weekly Excel",
+        "/download\\_monthly — monthly Excel",
     ]
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
@@ -451,25 +412,25 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     if update.effective_chat.id not in settings.TELEGRAM_ADMIN_CHAT_IDS:
-        await query.answer("⛔ Дастрасӣ рад шуд.", show_alert=True)
+        await query.answer("⛔ Access denied.", show_alert=True)
         return
 
     data = query.data
 
     if data == CB_STATUS:
         if not _listener_manager:
-            await query.edit_message_text("ℹ️ Дастгоҳҳо ёфт нашуд.")
+            await query.edit_message_text("ℹ️ No devices found.")
             return
         status = _listener_manager.status()
-        lines = ["🔌 *Ҳолати дастгоҳҳо*\n"]
+        lines = ["🔌 *Device Status*\n"]
         for direction, info in status.items():
             icon  = "🟢" if info["connected"] else "🔴"
-            state = "Васл ✓" if info["connected"] else "Қатъ ✗"
-            dev   = "ОМАДАН (IN)" if direction == "IN" else "РАФТАН (OUT)"
+            state = "Connected ✓" if info["connected"] else "Disconnected ✗"
+            label = "ENTRY (IN)" if direction == "IN" else "EXIT (OUT)"
             lines.append(
-                f"{icon} *{dev}*\n"
+                f"{icon} *{label}*\n"
                 f"   IP: `{info['ip']}` | _{state}_\n"
-                f"   Васлшавӣ: {info['reconnect_count']} бор"
+                f"   Reconnects: {info['reconnect_count']}"
             )
         await query.edit_message_text(
             "\n".join(lines),
@@ -483,16 +444,16 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _inline_download(query, data: str):
     if not _attendance_processor:
-        await query.edit_message_text("❗ Система тайёр нест.")
+        await query.edit_message_text("❗ System not ready.")
         return
 
     labels = {
-        CB_DL_DAILY:   "рӯзона",
-        CB_DL_WEEKLY:  "ҳафтаина",
-        CB_DL_MONTHLY: "моҳона",
+        CB_DL_DAILY:   "Daily",
+        CB_DL_WEEKLY:  "Weekly",
+        CB_DL_MONTHLY: "Monthly",
     }
     await query.edit_message_text(
-        f"⏳ *Excel {labels[data]}* тайёр мешавад...",
+        f"⏳ *{labels[data]} Excel* is being prepared...",
         parse_mode=ParseMode.MARKDOWN,
     )
 
@@ -501,19 +462,19 @@ async def _inline_download(query, data: str):
             today   = date.today()
             records = _attendance_processor.get_daily_report(today)
             fp      = generate_daily_report(records, today)
-            caption = f"📊 Ҳисоботи рӯзона — {today.strftime('%d.%m.%Y')}"
+            caption = f"📊 Daily Report — {today.strftime('%d.%m.%Y')}"
 
         elif data == CB_DL_WEEKLY:
             start, end = get_weekly_dates()
             records = _attendance_processor.get_period_report(start, end)
             fp      = generate_period_report(records, start, end, "weekly")
-            caption = f"📅 Ҳисоботи ҳафтаина — {start.strftime('%d.%m')}–{end.strftime('%d.%m.%Y')}"
+            caption = f"📅 Weekly Report — {start.strftime('%d.%m')}–{end.strftime('%d.%m.%Y')}"
 
         else:
             start, end = get_monthly_dates()
             records = _attendance_processor.get_period_report(start, end)
             fp      = generate_period_report(records, start, end, "monthly")
-            caption = f"🗓 Ҳисоботи моҳона — {start.strftime('%d.%m')}–{end.strftime('%d.%m.%Y')}"
+            caption = f"🗓 Monthly Report — {start.strftime('%d.%m')}–{end.strftime('%d.%m.%Y')}"
 
         with open(fp, "rb") as f:
             await query.message.reply_document(
@@ -522,7 +483,7 @@ async def _inline_download(query, data: str):
                 caption=caption,
             )
         await query.edit_message_text(
-            "📊 *Ҳисобот / Excel*\n\nНавъи ҳисобот интихоб кунед:",
+            "📊 *Reports / Excel*\n\nSelect report type:",
             reply_markup=_reports_inline(),
             parse_mode=ParseMode.MARKDOWN,
         )
@@ -530,14 +491,14 @@ async def _inline_download(query, data: str):
     except Exception as e:
         logger.error(f"Report generation error: {e}")
         await query.edit_message_text(
-            f"❗ Хато:\n`{str(e)[:200]}`",
+            f"❗ Error:\n`{str(e)[:200]}`",
             reply_markup=_reports_inline(),
             parse_mode=ParseMode.MARKDOWN,
         )
 
 
 # ════════════════════════════════════════════════════════
-# КОМАНДА-shortcuts (ба корбарони пешрафта)
+# COMMAND SHORTCUTS
 # ════════════════════════════════════════════════════════
 
 async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -571,7 +532,7 @@ async def cmd_download_daily(update: Update, context: ContextTypes.DEFAULT_TYPE)
     fp      = generate_daily_report(records, today)
     await update.message.reply_document(
         document=open(fp, "rb"), filename=fp.name,
-        caption=f"📊 Ҳисоботи рӯзона — {today.strftime('%d.%m.%Y')}",
+        caption=f"📊 Daily Report — {today.strftime('%d.%m.%Y')}",
     )
 
 async def cmd_download_weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -581,7 +542,7 @@ async def cmd_download_weekly(update: Update, context: ContextTypes.DEFAULT_TYPE
     fp         = generate_period_report(records, start, end, "weekly")
     await update.message.reply_document(
         document=open(fp, "rb"), filename=fp.name,
-        caption=f"📅 Ҳисоботи ҳафтаина — {start.strftime('%d.%m')}–{end.strftime('%d.%m.%Y')}",
+        caption=f"📅 Weekly Report — {start.strftime('%d.%m')}–{end.strftime('%d.%m.%Y')}",
     )
 
 async def cmd_download_monthly(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -591,7 +552,7 @@ async def cmd_download_monthly(update: Update, context: ContextTypes.DEFAULT_TYP
     fp         = generate_period_report(records, start, end, "monthly")
     await update.message.reply_document(
         document=open(fp, "rb"), filename=fp.name,
-        caption=f"🗓 Ҳисоботи моҳона — {start.strftime('%d.%m')}–{end.strftime('%d.%m.%Y')}",
+        caption=f"🗓 Monthly Report — {start.strftime('%d.%m')}–{end.strftime('%d.%m.%Y')}",
     )
 
 
@@ -600,7 +561,7 @@ async def cmd_download_monthly(update: Update, context: ContextTypes.DEFAULT_TYP
 # ════════════════════════════════════════════════════════
 
 class NotificationService:
-    """Фиристодани огоҳиҳои автоматӣ"""
+    """Automatic notification sender"""
 
     def __init__(self, bot_token: str, admin_chat_ids: list):
         self.bot_token      = bot_token
@@ -652,20 +613,20 @@ class NotificationService:
         lates   = attendance_proc.get_today_lates()
         absents = attendance_proc.get_today_absents()
 
-        lines = [f"🌅 *Огоҳии субҳ — {today}*\n"]
-        lines.append(f"✅ Ҳозир: *{len(records)} нафар*")
+        lines = [f"🌅 *Morning Summary — {today}*\n"]
+        lines.append(f"✅ Present: *{len(records)} staff*")
 
         if lates:
-            lines.append(f"⏰ Дер карданд: *{len(lates)} нафар*")
+            lines.append(f"⏰ Late: *{len(lates)} staff*")
             for r in lates[:5]:
                 lines.append(
-                    f"  • {r['full_name']} — `{_fmt(r.get('first_in'))}` "
-                    f"(+{r.get('late_minutes', 0)} дақ)"
+                    f"  • {r['full_name']} _({r.get('position') or '—'})_ — "
+                    f"`{_fmt(r.get('first_in'))}` (+{r.get('late_minutes', 0)}m)"
                 )
         if absents:
-            lines.append(f"❌ Ғоибон: *{len(absents)} нафар*")
+            lines.append(f"❌ Absent: *{len(absents)} staff*")
             for r in absents[:5]:
-                lines.append(f"  • {r['full_name']}")
+                lines.append(f"  • {r['full_name']} _({r.get('position') or '—'})_")
 
         await self.send_message("\n".join(lines))
 
@@ -675,26 +636,32 @@ class NotificationService:
         early_leaves = [r for r in records if r.get("status") in ("early_leave", "late_and_early")]
         still_in     = [r for r in records if not r.get("last_out")]
 
-        lines = [f"🌆 *Огоҳии бегоҳ — {today}*\n"]
+        lines = [f"🌆 *Evening Summary — {today}*\n"]
 
         if early_leaves:
-            lines.append(f"🚪 Барвақт рафтанд: *{len(early_leaves)} нафар*")
+            lines.append(f"🚪 Left early: *{len(early_leaves)} staff*")
             for r in early_leaves[:5]:
-                lines.append(f"  • {r['full_name']} — `{_fmt(r.get('last_out'))}`")
+                lines.append(
+                    f"  • {r['full_name']} _({r.get('position') or '—'})_ — "
+                    f"out `{_fmt(r.get('last_out'))}`"
+                )
 
         if still_in:
-            lines.append(f"\n🏢 Ҳанӯз дар корхона: *{len(still_in)} нафар*")
+            lines.append(f"\n🏢 Still inside: *{len(still_in)} staff*")
             for r in still_in[:5]:
-                lines.append(f"  • {r['full_name']} — омад `{_fmt(r.get('first_in'))}`")
+                lines.append(
+                    f"  • {r['full_name']} _({r.get('position') or '—'})_ — "
+                    f"in `{_fmt(r.get('first_in'))}`"
+                )
 
         await self.send_message("\n".join(lines))
 
     async def send_device_alert(self, direction: str, error: Exception):
         msg = (
-            f"⚠️ *Огоҳии дастгоҳ!*\n\n"
-            f"Дастгоҳ: *{direction}*\n"
-            f"Хато: `{str(error)[:200]}`\n\n"
-            f"Система кӯшиш мекунад дубора васл шавад..."
+            f"⚠️ *Device Alert!*\n\n"
+            f"Device: *{direction}*\n"
+            f"Error: `{str(error)[:200]}`\n\n"
+            f"System will attempt to reconnect..."
         )
         await self.send_message(msg)
 
@@ -708,7 +675,6 @@ def build_bot_app(attendance_proc, listener_mgr=None) -> Application:
 
     app = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
 
-    # Команда-ҳо
     app.add_handler(CommandHandler("start",            cmd_start))
     app.add_handler(CommandHandler("menu",             cmd_menu))
     app.add_handler(CommandHandler("today",            cmd_today))
@@ -721,10 +687,7 @@ def build_bot_app(attendance_proc, listener_mgr=None) -> Application:
     app.add_handler(CommandHandler("download_weekly",  cmd_download_weekly))
     app.add_handler(CommandHandler("download_monthly", cmd_download_monthly))
 
-    # ReplyKeyboard тугмаҳо — матни паём тавассути MessageHandler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_button))
-
-    # Inline callback
     app.add_handler(CallbackQueryHandler(on_callback))
 
     return app

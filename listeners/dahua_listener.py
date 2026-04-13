@@ -16,6 +16,11 @@ class DahuaListener:
         self.callback = callback
         self.reconnect_delay = reconnect_delay
         self.running = False
+        self.connected = False
+        self.reconnect_count = 0
+        # IP-ро аз curl_cmd мегирем
+        m = re.search(r'https?://([^/]+)', curl_cmd)
+        self.ip = m.group(1).split(":")[0] if m else "unknown"
 
     def start(self):
         self.running = True
@@ -24,11 +29,13 @@ class DahuaListener:
 
     def stop(self):
         self.running = False
+        self.connected = False
 
     def _run(self):
         while self.running:
             try:
                 logger.info(f"[{self.name}] Starting curl listener...")
+                self.connected = False
 
                 process = subprocess.Popen(
                     shlex.split(self.curl_cmd),
@@ -38,6 +45,7 @@ class DahuaListener:
                     bufsize=1
                 )
 
+                self.connected = True
                 logger.info(f"[{self.name}] Connected!")
 
                 block = []
@@ -56,10 +64,14 @@ class DahuaListener:
 
                     block.append(line)
 
+                self.connected = False
+                self.reconnect_count += 1
                 logger.warning(f"[{self.name}] Disconnected. Reconnecting...")
                 time.sleep(self.reconnect_delay)
 
             except Exception as e:
+                self.connected = False
+                self.reconnect_count += 1
                 logger.exception(f"[{self.name}] Error: {e}")
                 time.sleep(self.reconnect_delay)
 
@@ -90,3 +102,29 @@ class DahuaListener:
 
         if self.callback:
             self.callback(event)
+
+
+class ListenerManager:
+    def __init__(self):
+        self._listeners: dict[str, DahuaListener] = {}
+
+    def add(self, listener: DahuaListener):
+        self._listeners[listener.name] = listener
+
+    def start_all(self):
+        for listener in self._listeners.values():
+            listener.start()
+
+    def stop_all(self):
+        for listener in self._listeners.values():
+            listener.stop()
+
+    def status(self) -> dict:
+        return {
+            name: {
+                "connected": l.connected,
+                "ip": l.ip,
+                "reconnect_count": l.reconnect_count,
+            }
+            for name, l in self._listeners.items()
+        }
