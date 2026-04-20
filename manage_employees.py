@@ -40,27 +40,27 @@ def cmd_list(args):
     _, emp_mgr, _ = get_components()
     employees = emp_mgr.get_all()
     if not employees:
-        print("Ҳеҷ корманде нест.")
+        print("No employees found.")
         return
 
-    print(f"\n{'ID':<8} {'Dahua ID':<10} {'Ному насаб':<30} {'Вазифа':<25} {'Статус'}")
+    print(f"\n{'ID':<8} {'Dahua ID':<10} {'Full Name':<30} {'Position':<25} {'Status'}")
     print("-" * 90)
     for e in employees:
         print(
             f"{e['employee_id']:<8} {e['dahua_user_id'] or '—':<10} "
             f"{e['full_name']:<30} {(e['position'] or '—'):<25} {e['status']}"
         )
-    print(f"\nЯкумла: {len(employees)} корманд")
+    print(f"\nTotal: {len(employees)} employees")
 
 
 def cmd_add(args):
     _, emp_mgr, _ = get_components()
-    print("\n=== Иловакунии корманди нав ===")
-    emp_id = input("Employee ID (мисол: EMP010): ").strip()
+    print("\n=== Add New Employee ===")
+    emp_id = input("Employee ID (e.g. EMP010): ").strip()
     dahua_id = input("Dahua UserID: ").strip()
-    name = input("Ному насаб: ").strip()
-    position = input("Вазифа: ").strip()
-    phone = input("Телефон (ихтиёрӣ): ").strip()
+    name = input("Full Name: ").strip()
+    position = input("Position: ").strip()
+    phone = input("Phone (optional): ").strip()
 
     emp_mgr.add_employee(
         employee_id=emp_id,
@@ -70,13 +70,13 @@ def cmd_add(args):
         phone=phone or None,
     )
 
-    print("\nЖадвали корӣ:")
-    start = input(f"Вақти оғоз [{settings.WORK_START_TIME}]: ").strip() or settings.WORK_START_TIME
-    end = input(f"Вақти анҷом [{settings.WORK_END_TIME}]: ").strip() or settings.WORK_END_TIME
-    days = input(f"Рӯзҳои корӣ [{settings.WORK_DAYS_STR}]: ").strip() or settings.WORK_DAYS_STR
+    print("\nWork Schedule:")
+    start = input(f"Start time [{settings.WORK_START_TIME}]: ").strip() or settings.WORK_START_TIME
+    end = input(f"End time [{settings.WORK_END_TIME}]: ").strip() or settings.WORK_END_TIME
+    days = input(f"Work days [{settings.WORK_DAYS_STR}]: ").strip() or settings.WORK_DAYS_STR
     emp_mgr.set_schedule(emp_id, start, end, days)
 
-    print(f"\n✅ Корманд иловашуд: {name} (ID: {emp_id})")
+    print(f"\n✅ Employee added: {name} (ID: {emp_id})")
 
 
 def cmd_set_schedule(args):
@@ -84,16 +84,16 @@ def cmd_set_schedule(args):
     emp_id = args.employee_id
     emp = emp_mgr.get_by_employee_id(emp_id)
     if not emp:
-        print(f"❌ Корманд {emp_id} нашуд.")
+        print(f"❌ Employee {emp_id} not found.")
         return
 
-    print(f"\nЖадвали корӣ барои: {emp['full_name']}")
+    print(f"\nWork schedule for: {emp['full_name']}")
     sched = emp_mgr.get_schedule(emp_id)
-    start = input(f"Вақти оғоз [{sched['work_start_time']}]: ").strip() or sched["work_start_time"]
-    end = input(f"Вақти анҷом [{sched['work_end_time']}]: ").strip() or sched["work_end_time"]
-    days = input(f"Рӯзҳои корӣ [{sched['work_days']}]: ").strip() or sched["work_days"]
+    start = input(f"Start time [{sched['work_start_time']}]: ").strip() or sched["work_start_time"]
+    end = input(f"End time [{sched['work_end_time']}]: ").strip() or sched["work_end_time"]
+    days = input(f"Work days [{sched['work_days']}]: ").strip() or sched["work_days"]
     emp_mgr.set_schedule(emp_id, start, end, days)
-    print(f"✅ Жадвал навсозишуд: {start}–{end} ({days})")
+    print(f"✅ Schedule updated: {start}–{end} ({days})")
 
 
 def cmd_report(args):
@@ -104,46 +104,46 @@ def cmd_report(args):
         today = date.today()
         records = att_proc.get_daily_report(today)
         fp = generate_daily_report(records, today)
-        print(f"✅ Ҳисоботи рӯзона: {fp}")
+        print(f"✅ Daily report: {fp}")
 
     elif rtype == "weekly":
         start, end = get_weekly_dates()
         records = att_proc.get_period_report(start, end)
         fp = generate_period_report(records, start, end, "weekly")
-        print(f"✅ Ҳисоботи ҳафтаина: {fp}")
+        print(f"✅ Weekly report: {fp}")
 
     elif rtype == "monthly":
         start, end = get_monthly_dates()
         records = att_proc.get_period_report(start, end)
         fp = generate_period_report(records, start, end, "monthly")
-        print(f"✅ Ҳисоботи моҳона: {fp}")
+        print(f"✅ Monthly report: {fp}")
 
     elif rtype == "custom":
-        start_str = input("Аз санаи (YYYY-MM-DD): ").strip()
-        end_str = input("То санаи (YYYY-MM-DD): ").strip()
+        start_str = input("From date (YYYY-MM-DD): ").strip()
+        end_str = input("To date (YYYY-MM-DD): ").strip()
         from datetime import datetime
         start = datetime.strptime(start_str, "%Y-%m-%d").date()
         end = datetime.strptime(end_str, "%Y-%m-%d").date()
         records = att_proc.get_period_report(start, end)
         fp = generate_period_report(records, start, end, "custom")
-        print(f"✅ Ҳисобот: {fp}")
+        print(f"✅ Report: {fp}")
 
 
 def main():
     parser = argparse.ArgumentParser(description="Dahua Attendance — Employee Manager")
     sub = parser.add_subparsers(dest="command")
 
-    sub.add_parser("list", help="Рӯйхати кормандон")
-    sub.add_parser("add", help="Иловакунии корманд")
+    sub.add_parser("list", help="List all employees")
+    sub.add_parser("add", help="Add new employee")
 
-    sched_p = sub.add_parser("set-schedule", help="Танзими жадвали корӣ")
+    sched_p = sub.add_parser("set-schedule", help="Set employee work schedule")
     sched_p.add_argument("employee_id", help="Employee ID")
 
-    rep_p = sub.add_parser("report", help="Барориши ҳисобот")
+    rep_p = sub.add_parser("report", help="Generate reports")
     rep_p.add_argument(
         "type",
         choices=["today", "weekly", "monthly", "custom"],
-        help="Навъи ҳисобот",
+        help="Report type",
     )
 
     args = parser.parse_args()

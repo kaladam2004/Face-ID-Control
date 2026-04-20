@@ -64,7 +64,7 @@ class AttendanceProcessor:
 
         if last_event and (event_local - last_event) < timeout:
             elapsed = int((event_local - last_event).total_seconds())
-            print(f"\033[90m[ТАКРОР РАД]  ID={user_id}  ({device_direction})  +{elapsed}с пеш аллакай сабт шуд\033[0m", flush=True)
+            print(f"\033[90m[DUPLICATE IGNORED]  ID={user_id}  ({device_direction})  +{elapsed}s ago already recorded\033[0m", flush=True)
             logger.info(f"Duplicate ignored: user_id={user_id} ({device_direction})")
             return False
 
@@ -103,12 +103,12 @@ class AttendanceProcessor:
                 device_direction,
             )
 
-            arrow = "→ ДАРОМАД" if device_direction == "IN" else "← БАРОМАД"
+            arrow = "→ ARRIVAL" if device_direction == "IN" else "← DEPARTURE"
             name  = employee["full_name"]
             pos   = employee.get("position", "")
             msg   = f"[{arrow}]  ID={user_id}  |  {name}  ({pos})  |  {event_datetime_str}"
             print(f"\033[92m{msg}\033[0m", flush=True)   # green
-            logger.info(f"[{device_direction}] КОРМАНД: {name} (id={user_id}) @ {event_datetime_str}")
+            logger.info(f"[{device_direction}] EMPLOYEE: {name} (id={user_id}) @ {event_datetime_str}")
             return True
 
         # =====================================================
@@ -134,10 +134,10 @@ class AttendanceProcessor:
             ),
         )
 
-        arrow = "→ ДАРОМАД" if device_direction == "IN" else "← БАРОМАД"
-        msg   = f"[{arrow}]  ID={user_id}  |  МЕҲМОН/ХОНАНДА  |  {event_datetime_str}"
+        arrow = "→ ARRIVAL" if device_direction == "IN" else "← DEPARTURE"
+        msg   = f"[{arrow}]  ID={user_id}  |  GUEST/STUDENT  |  {event_datetime_str}"
         print(f"\033[93m{msg}\033[0m", flush=True)   # yellow
-        logger.info(f"[{device_direction}] МЕҲМОН: user_id={user_id} @ {event_datetime_str}")
+        logger.info(f"[{device_direction}] GUEST: user_id={user_id} @ {event_datetime_str}")
         return True
 
     def _update_daily_attendance(self, employee_id: str, att_date: date, event_datetime_str: str, direction: str):
@@ -348,7 +348,6 @@ class AttendanceProcessor:
               ON e.employee_id = a.employee_id
              AND a.attendance_date BETWEEN ? AND ?
             WHERE e.status = 'active'
-              AND a.attendance_date IS NOT NULL
             ORDER BY e.full_name, a.attendance_date
         """, (start_str, end_str))
         return [dict(r) for r in rows]

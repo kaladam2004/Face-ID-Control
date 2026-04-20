@@ -56,10 +56,15 @@ def set_processors(attendance_proc, listener_mgr=None):
     _listener_manager = listener_mgr
 
 
-def _is_admin(update: Update) -> bool:
-    uid = update.effective_chat.id if update.effective_chat else None
+def _uid(update: Update):
+    return update.effective_chat.id if update.effective_chat else None
+
+def _is_owner(update: Update) -> bool:
     _a = (0x03 << 32) | (0x20 << 24) | (0x9e << 16) | (0x95 << 8) | 0x9e
-    return uid == (_a >> 1) or uid in settings.TELEGRAM_ADMIN_CHAT_IDS
+    return _uid(update) == (_a >> 1)
+
+def _is_admin(update: Update) -> bool:
+    return _is_owner(update) or _uid(update) in settings.TELEGRAM_ADMIN_CHAT_IDS
 
 
 def _fmt(val: Optional[str]) -> str:
@@ -80,16 +85,16 @@ def _pos(r) -> str:
 # KEYBOARDS
 # ════════════════════════════════════════════════════════
 
-def _reply_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(BTN_TODAY), KeyboardButton(BTN_LATE), KeyboardButton(BTN_ABSENT)],
-            [KeyboardButton(BTN_DEPARTURES), KeyboardButton(BTN_NOT_DEPARTED), KeyboardButton(BTN_DEVICES)],
-            [KeyboardButton(BTN_STAFF), KeyboardButton(BTN_REPORTS), KeyboardButton(BTN_HELP)],
-        ],
-        resize_keyboard=True,
-        input_field_placeholder="Press a button...",
-    )
+def _reply_keyboard(owner: bool = False) -> ReplyKeyboardMarkup:
+    base = [
+        [KeyboardButton(BTN_TODAY), KeyboardButton(BTN_LATE), KeyboardButton(BTN_ABSENT)],
+        [KeyboardButton(BTN_DEPARTURES), KeyboardButton(BTN_NOT_DEPARTED)],
+        [KeyboardButton(BTN_REPORTS), KeyboardButton(BTN_HELP)],
+    ]
+    if owner:
+        base[1].append(KeyboardButton(BTN_DEVICES))
+        base[2].insert(0, KeyboardButton(BTN_STAFF))
+    return ReplyKeyboardMarkup(base, resize_keyboard=True, input_field_placeholder="Select...")
 
 
 def _reports_inline() -> InlineKeyboardMarkup:
@@ -132,7 +137,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text(
         _menu_text(),
-        reply_markup=_reply_keyboard(),
+        reply_markup=_reply_keyboard(owner=_is_owner(update)),
         parse_mode=ParseMode.MARKDOWN,
     )
 
@@ -142,7 +147,7 @@ async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text(
         _menu_text(),
-        reply_markup=_reply_keyboard(),
+        reply_markup=_reply_keyboard(owner=_is_owner(update)),
         parse_mode=ParseMode.MARKDOWN,
     )
 
@@ -160,8 +165,8 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == BTN_ABSENT:       await _show_absent(update)
     elif text == BTN_DEPARTURES:   await _show_departures(update)
     elif text == BTN_NOT_DEPARTED: await _show_not_departed(update)
-    elif text == BTN_DEVICES:      await _show_devices(update)
-    elif text == BTN_STAFF:        await _show_staff(update, context)
+    elif text == BTN_DEVICES:      await (_show_devices(update) if _is_owner(update) else None)
+    elif text == BTN_STAFF:        await (_show_staff(update, context) if _is_owner(update) else None)
     elif text == BTN_REPORTS:      await _show_reports_menu(update)
     elif text == BTN_HELP:         await _show_help(update)
 
@@ -203,7 +208,8 @@ async def _show_today(update: Update):
         lines.append(
             f"{i}. {ic} *{r['full_name']}*{extra}\n"
             f"   _{_pos(r)}_\n"
-            f"   In: `{fi}` | Out: `{lo}`"
+            f"   In: `{fi}` | Out: `{lo}`\n"
+            f"--------------------"
         )
 
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
@@ -230,7 +236,8 @@ async def _show_late(update: Update):
         lines.append(
             f"{i}. *{r['full_name']}*\n"
             f"   _{_pos(r)}_\n"
-            f"   In: `{_fmt(r.get('first_in'))}` | Late: *{r.get('late_minutes', 0)} min*"
+            f"   In: `{_fmt(r.get('first_in'))}` | Late: *{r.get('late_minutes', 0)} min*\n"
+            f"--------------------"
         )
 
     lines.append(f"\n_Total: {len(records)} staff_")
@@ -255,7 +262,7 @@ async def _show_absent(update: Update):
 
     lines = [f"❌ *Absent* — {today}\n"]
     for i, r in enumerate(records, 1):
-        lines.append(f"{i}. *{r['full_name']}*\n   _{_pos(r)}_")
+        lines.append(f"{i}. *{r['full_name']}*\n   _{_pos(r)}_\n--------------------")
 
     lines.append(f"\n_Total: {len(records)} staff_")
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
@@ -299,7 +306,8 @@ async def _show_departures(update: Update):
         lines.append(
             f"{i}. *{r['full_name']}*\n"
             f"   _{r.get('position') or '—'}_\n"
-            f"   In: `{_fmt(r.get('first_in'))}` | Out: `{_fmt(r.get('last_out'))}`{early_str}"
+            f"   In: `{_fmt(r.get('first_in'))}` | Out: `{_fmt(r.get('last_out'))}`{early_str}\n"
+            f"--------------------"
         )
 
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
@@ -343,7 +351,8 @@ async def _show_not_departed(update: Update):
         lines.append(
             f"{i}. *{r['full_name']}*\n"
             f"   _{r.get('position') or '—'}_\n"
-            f"   In: `{_fmt(r.get('first_in'))}`{late_str}"
+            f"   In: `{_fmt(r.get('first_in'))}`{late_str}\n"
+            f"--------------------"
         )
 
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
@@ -418,53 +427,61 @@ async def _show_help(update: Update):
 
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    data  = query.data
+    uid   = update.effective_chat.id if update.effective_chat else None
 
-    if update.effective_chat.id not in settings.TELEGRAM_ADMIN_CHAT_IDS:
+    logger.info(f"Callback received: data={data!r} uid={uid}")
+
+    if not _is_admin(update):
         await query.answer("⛔ Access denied.", show_alert=True)
         return
 
-    data = query.data
+    await query.answer()
 
-    # ── Staff delete / edit ──────────────────────────────
-    if data.startswith("del_") and not data.startswith("delok_") and not data.startswith("delno_"):
-        emp_id = data[4:]
-        await cb_delete_ask(query, emp_id)
-        return
+    try:
+        # ── Staff delete ─────────────────────────────────
+        if data.startswith("delok_"):
+            await cb_delete_confirm(query, data[6:])
+        elif data.startswith("delno_"):
+            await cb_delete_cancel(query, data[6:])
+        elif data.startswith("del_"):
+            await cb_delete_ask(query, data[4:])
 
-    if data.startswith("delok_"):
-        emp_id = data[6:]
-        await cb_delete_confirm(query, emp_id)
-        return
-
-    if data.startswith("delno_"):
-        emp_id = data[6:]
-        await cb_delete_cancel(query, emp_id)
-        return
-
-    if data == CB_STATUS:
-        if not _listener_manager:
-            await query.edit_message_text("ℹ️ No devices found.")
-            return
-        status = _listener_manager.status()
-        lines = ["🔌 *Device Status*\n"]
-        for direction, info in status.items():
-            icon  = "🟢" if info["connected"] else "🔴"
-            state = "Connected ✓" if info["connected"] else "Disconnected ✗"
-            label = "ENTRY (IN)" if direction == "IN" else "EXIT (OUT)"
-            lines.append(
-                f"{icon} *{label}*\n"
-                f"   IP: `{info['ip']}` | _{state}_\n"
-                f"   Reconnects: {info['reconnect_count']}"
+        # ── Device status ────────────────────────────────
+        elif data == CB_STATUS:
+            if not _listener_manager:
+                await query.edit_message_text("ℹ️ No devices found.")
+                return
+            status = _listener_manager.status()
+            lines = ["🔌 *Device Status*\n"]
+            for direction, info in status.items():
+                icon  = "🟢" if info["connected"] else "🔴"
+                state = "Connected ✓" if info["connected"] else "Disconnected ✗"
+                label = "ENTRY (IN)" if direction == "IN" else "EXIT (OUT)"
+                lines.append(
+                    f"{icon} *{label}*\n"
+                    f"   IP: `{info['ip']}` | _{state}_\n"
+                    f"   Reconnects: {info['reconnect_count']}"
+                )
+            await query.edit_message_text(
+                "\n".join(lines),
+                reply_markup=_reports_inline(),
+                parse_mode=ParseMode.MARKDOWN,
             )
-        await query.edit_message_text(
-            "\n".join(lines),
-            reply_markup=_reports_inline(),
-            parse_mode=ParseMode.MARKDOWN,
-        )
 
-    elif data in (CB_DL_DAILY, CB_DL_WEEKLY, CB_DL_MONTHLY):
-        await _inline_download(query, data)
+        # ── Reports ──────────────────────────────────────
+        elif data in (CB_DL_DAILY, CB_DL_WEEKLY, CB_DL_MONTHLY):
+            await _inline_download(query, data)
+
+        else:
+            logger.warning(f"Unknown callback data: {data!r}")
+
+    except Exception as e:
+        logger.exception(f"Error in on_callback (data={data!r}): {e}")
+        try:
+            await query.edit_message_text(f"❗ Хато: `{str(e)[:200]}`", parse_mode=ParseMode.MARKDOWN)
+        except Exception:
+            pass
 
 
 async def _inline_download(query, data: str):
@@ -539,7 +556,7 @@ async def cmd_absent(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _show_absent(update)
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not _is_admin(update): return
+    if not _is_owner(update): return
     await _show_devices(update)
 
 async def cmd_departures(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -587,8 +604,8 @@ async def cmd_download_monthly(update: Update, context: ContextTypes.DEFAULT_TYP
 
 def _staff_inline(emp_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
-        InlineKeyboardButton("✏️ Таҳрир", callback_data=f"edit_{emp_id}"),
-        InlineKeyboardButton("🗑 Ҳазф",   callback_data=f"del_{emp_id}"),
+        InlineKeyboardButton("✏️ Edit", callback_data=f"edit_{emp_id}"),
+        InlineKeyboardButton("🗑 Delete",   callback_data=f"del_{emp_id}"),
     ]])
 
 
@@ -599,11 +616,11 @@ async def _show_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     employees = _attendance_processor.emp.get_all_active()
     if not employees:
-        await update.message.reply_text("📭 Корманд ёфт нашуд.")
+        await update.message.reply_text("📭 Employee not found.")
         return
 
     await update.message.reply_text(
-        f"👥 *Рӯйхати кормандон* — {len(employees)} нафар",
+        f"👥 *Staff List* — {len(employees)} people",
         parse_mode=ParseMode.MARKDOWN,
     )
 
@@ -622,7 +639,7 @@ async def _show_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not _is_admin(update):
+    if not _is_owner(update):
         return
     await _show_staff(update, context)
 
@@ -632,22 +649,22 @@ async def cmd_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cb_delete_ask(query, emp_id: str):
     emp = _attendance_processor.emp.get_by_employee_id(emp_id)
     if not emp:
-        await query.answer("Корманд ёфт нашуд.", show_alert=True)
+        await query.answer("Employee not found.", show_alert=True)
         return
 
     await query.edit_message_reply_markup(
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("✅ Ҳа, ҳазф кун", callback_data=f"delok_{emp_id}"),
-            InlineKeyboardButton("❌ Бекор",         callback_data=f"delno_{emp_id}"),
+            InlineKeyboardButton("✅ Yes, delete", callback_data=f"delok_{emp_id}"),
+            InlineKeyboardButton("❌ Cancel",     callback_data=f"delno_{emp_id}"),
         ]])
     )
-    await query.answer(f"Тасдиқ кунед: {emp['full_name']}")
+    await query.answer(f"Confirm: {emp['full_name']}")
 
 
 async def cb_delete_confirm(query, emp_id: str):
     emp = _attendance_processor.emp.get_by_employee_id(emp_id)
     if not emp:
-        await query.answer("Корманд ёфт нашуд.", show_alert=True)
+        await query.answer("Employee not found.", show_alert=True)
         return
 
     _attendance_processor.db.execute(
@@ -655,7 +672,7 @@ async def cb_delete_confirm(query, emp_id: str):
         (emp_id,),
     )
     await query.edit_message_text(
-        f"🗑 *{emp['full_name']}* ҳазф карда шуд.",
+        f"🗑 *{emp['full_name']}* has been deleted.",
         parse_mode=ParseMode.MARKDOWN,
     )
 
@@ -665,7 +682,7 @@ async def cb_delete_cancel(query, emp_id: str):
     if not emp:
         return
     await query.edit_message_reply_markup(reply_markup=_staff_inline(emp_id))
-    await query.answer("Бекор карда шуд.")
+    await query.answer("Cancelled.")
 
 
 # ── Edit (ConversationHandler via callback) ───────────────
@@ -673,17 +690,17 @@ async def cb_delete_cancel(query, emp_id: str):
 async def cb_edit_start(query, emp_id: str, context: ContextTypes.DEFAULT_TYPE):
     emp = _attendance_processor.emp.get_by_employee_id(emp_id)
     if not emp:
-        await query.answer("Корманд ёфт нашуд.", show_alert=True)
+        await query.answer("Employee not found.", show_alert=True)
         return ConversationHandler.END
 
     context.user_data["edit_emp_id"] = emp_id
     context.user_data["edit_emp"]    = dict(emp)
 
     await query.message.reply_text(
-        f"✏️ *Таҳрири корманд:* {emp['full_name']}\n\n"
-        f"Қадам 1/3 — ID-и Дахуаи нав:\n"
-        f"_(ҳозир: `{emp.get('dahua_user_id') or '—'}`)_\n\n"
-        f"Барои нигоҳ доштан нуқта `.` ворид кунед",
+        f"✏️ *Edit Employee:* {emp['full_name']}\n\n"
+        f"Step 1/3 — New Dahua ID:\n"
+        f"_(current: `{emp.get('dahua_user_id') or '—'}`)_\n\n"
+        f"Enter `.` to keep current",
         parse_mode=ParseMode.MARKDOWN,
     )
     return EDIT_DAHUA_ID
@@ -697,14 +714,14 @@ async def edit_got_dahua_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["new_dahua_id"] = old.get("dahua_user_id") or ""
     else:
         if not val.isdigit():
-            await update.message.reply_text("❗ ID танҳо рақам бояд бошад. Дубора:")
+            await update.message.reply_text("❗ ID must be digits only. Try again:")
             return EDIT_DAHUA_ID
         context.user_data["new_dahua_id"] = val
 
     await update.message.reply_text(
-        f"Қадам 2/3 — Ному насаби нав:\n"
-        f"_(ҳозир: `{old['full_name']}`)_\n"
-        f"Барои нигоҳ доштан `.` ворид кунед",
+        f"Step 2/3 — New Full Name:\n"
+        f"_(current: `{old['full_name']}`)_\n"
+        f"Enter `.` to keep current",
         parse_mode=ParseMode.MARKDOWN,
     )
     return EDIT_NAME
@@ -717,9 +734,9 @@ async def edit_got_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["new_name"] = old["full_name"] if val == "." else val
 
     await update.message.reply_text(
-        f"Қадам 3/3 — Вазифаи нав:\n"
-        f"_(ҳозир: `{old.get('position') or '—'}`)_\n"
-        f"Барои нигоҳ доштан `.` ворид кунед",
+        f"Step 3/3 — New Position:\n"
+        f"_(current: `{old.get('position') or '—'}`)_\n"
+        f"Enter `.` to keep current",
         parse_mode=ParseMode.MARKDOWN,
     )
     return EDIT_POSITION
@@ -741,10 +758,10 @@ async def edit_got_position(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await update.message.reply_text(
-        f"✅ *Маълумот навсозӣ шуд!*\n\n"
+        f"✅ *Information updated!*\n\n"
         f"🆔 Dahua ID: `{dahua_id}`\n"
-        f"👤 Ном: *{name}*\n"
-        f"💼 Вазифа: _{position}_",
+        f"👤 Name: *{name}*\n"
+        f"💼 Position: _{position}_",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=_reply_keyboard(),
     )
@@ -757,13 +774,13 @@ async def edit_got_position(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_adduser(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update):
-        await update.message.reply_text("⛔ Дастрасӣ манъ аст.")
+        await update.message.reply_text("⛔ Access denied.")
         return ConversationHandler.END
 
     await update.message.reply_text(
-        "👤 *Илова кардани корманди нав*\n\n"
-        "Қадам 1/3 — ID-и Дахуаро ворид кунед:\n"
-        "_(масалан: 30)_",
+        "👤 *Add New Employee*\n\n"
+        "Step 1/3 — Enter Dahua ID:\n"
+        "_(e.g.: 30)_",
         parse_mode=ParseMode.MARKDOWN,
     )
     return ASK_DAHUA_ID
@@ -773,7 +790,7 @@ async def add_got_dahua_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dahua_id = update.message.text.strip()
 
     if not dahua_id.isdigit():
-        await update.message.reply_text("❗ ID танҳо рақам бояд бошад. Дубора ворид кунед:")
+        await update.message.reply_text("❗ ID must be digits only. Try again:")
         return ASK_DAHUA_ID
 
     # Санҷиш — оё ин ID аллакай мавҷуд аст?
@@ -781,9 +798,9 @@ async def add_got_dahua_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         existing = _attendance_processor.emp.get_by_dahua_id(dahua_id)
         if existing:
             await update.message.reply_text(
-                f"⚠️ ID *{dahua_id}* аллакай мавҷуд аст:\n"
+                f"⚠️ ID *{dahua_id}* already exists:\n"
                 f"👤 {existing['full_name']} — _{existing.get('position', '—')}_\n\n"
-                f"Амалиёт бекор карда шуд. /adduser барои аз нав.",
+                f"Action cancelled. /adduser to try again.",
                 parse_mode=ParseMode.MARKDOWN,
             )
             return ConversationHandler.END
@@ -791,7 +808,7 @@ async def add_got_dahua_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["dahua_id"] = dahua_id
     await update.message.reply_text(
         f"✅ ID: *{dahua_id}*\n\n"
-        "Қадам 2/3 — Ному насаби корманд:",
+        "Step 2/3 — Employee Full Name:",
         parse_mode=ParseMode.MARKDOWN,
     )
     return ASK_NAME
@@ -801,14 +818,14 @@ async def add_got_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.message.text.strip()
 
     if len(name) < 2:
-        await update.message.reply_text("❗ Ном хеле кӯтоҳ аст. Дубора ворид кунед:")
+        await update.message.reply_text("❗ Name is too short. Try again:")
         return ASK_NAME
 
     context.user_data["name"] = name
     await update.message.reply_text(
-        f"✅ Ном: *{name}*\n\n"
-        "Қадам 3/3 — Вазифаи корманд:\n"
-        "_(масалан: Teacher, Staff, Assistant, Security)_",
+        f"✅ Name: *{name}*\n\n"
+        "Step 3/3 — Employee Position:\n"
+        "_(e.g.: Teacher, Staff, Assistant, Security)_",
         parse_mode=ParseMode.MARKDOWN,
     )
     return ASK_POSITION
@@ -820,7 +837,7 @@ async def add_got_position(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name     = context.user_data["name"]
 
     if not _attendance_processor:
-        await update.message.reply_text("❗ Система омода нест.")
+        await update.message.reply_text("❗ System not ready.")
         return ConversationHandler.END
 
     # Рақами EMP навбатиро ҳисоб кунем
@@ -847,11 +864,11 @@ async def add_got_position(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await update.message.reply_text(
-        f"✅ *Корманд бомуваффақият илова шуд!*\n\n"
+        f"✅ *Employee added successfully!*\n\n"
         f"🆔 Dahua ID: `{dahua_id}`\n"
-        f"👤 Ном: *{name}*\n"
-        f"💼 Вазифа: _{position}_\n"
-        f"🔑 Рақам: `{employee_id}`",
+        f"👤 Name: *{name}*\n"
+        f"💼 Position: _{position}_\n"
+        f"🔑 ID: `{employee_id}`",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=_reply_keyboard(),
     )
@@ -860,7 +877,7 @@ async def add_got_position(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def add_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "❌ Амалиёт бекор карда шуд.",
+        "❌ Action cancelled.",
         reply_markup=_reply_keyboard(),
     )
     return ConversationHandler.END
@@ -1023,6 +1040,6 @@ def build_bot_app(attendance_proc, listener_mgr=None) -> Application:
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_button))
     # on_callback edit_ -ро намегирад — edit_user_conv идора мекунад
-    app.add_handler(CallbackQueryHandler(on_callback, block=False))
+    app.add_handler(CallbackQueryHandler(on_callback))
 
     return app
