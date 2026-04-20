@@ -27,11 +27,11 @@ COLOR_TOTAL_BG = "2E75B6"
 COLOR_TOTAL_FG = "FFFFFF"
 
 STATUS_LABELS = {
-    "present": "✅ Ҳозир",
-    "absent": "❌ Ғоиб",
-    "late": "⏰ Дер",
-    "early_leave": "🚪 Барвақт рафт",
-    "late_and_early": "⚠️ Дер+Барвақт",
+    "present": "✅ Present",
+    "absent": "❌ Absent",
+    "late": "⏰ Late",
+    "early_leave": "🚪 Early Departure",
+    "late_and_early": "⚠️ Late & Early",
     None: "—",
 }
 
@@ -106,21 +106,21 @@ def generate_daily_report(
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Ҳозиршавии рӯзона"
+    ws.title = "Daily Attendance"
 
     # Title
     ws.merge_cells("A1:J1")
     title_cell = ws["A1"]
-    title_cell.value = f"ҲИСОБОТИ ҲОЗИРШАВӢ — {report_date.strftime('%d.%m.%Y')}"
+    title_cell.value = f"ATTENDANCE REPORT — {report_date.strftime('%d.%m.%Y')}"
     title_cell.font = Font(bold=True, size=14, name="Calibri", color=COLOR_HEADER_BG)
     title_cell.alignment = _center()
 
     ws.row_dimensions[1].height = 30
 
     COLS = [
-        "№", "Ному насаб", "Вазифа", "Сана",
-        "Вақти омадан", "Вақти рафтан",
-        "Дер (дақ)", "Барвақт рафт (дақ)", "Статус", "Эзоҳ"
+        "No.", "Full Name", "Position", "Date",
+        "Arrival Time", "Departure Time",
+        "Late (min)", "Early Departure (min)", "Status", "Notes"
     ]
     _apply_header(ws, 2, COLS)
 
@@ -162,8 +162,8 @@ def generate_daily_report(
     total_fill = PatternFill("solid", fgColor=COLOR_TOTAL_BG)
     total_font = Font(bold=True, color=COLOR_TOTAL_FG, name="Calibri", size=11)
     total_vals = [
-        "", "ҶАМЪ", "", "",
-        f"Ҳозир: {totals['present']}", f"Ғоиб: {totals['absent']}",
+        "", "TOTAL", "", "",
+        f"Present: {totals['present']}", f"Absent: {totals['absent']}",
         totals["late"], totals["early"], "", ""
     ]
     for col_idx, val in enumerate(total_vals, 1):
@@ -199,23 +199,23 @@ def generate_period_report(
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    label = "ҲАФТАИНА" if report_type == "weekly" else "МОҲОНА"
-    ws.title = f"Ҳисобот {label}"
+    label = "WEEKLY" if report_type == "weekly" else "MONTHLY"
+    ws.title = f"{label.capitalize()} Report"
 
     # Title
     ws.merge_cells("A1:K1")
     title_cell = ws["A1"]
     period_str = f"{start_date.strftime('%d.%m.%Y')} — {end_date.strftime('%d.%m.%Y')}"
-    title_cell.value = f"ҲИСОБОТИ {label} — {period_str}"
+    title_cell.value = f"{label} ATTENDANCE REPORT — {period_str}"
     title_cell.font = Font(bold=True, size=14, name="Calibri", color=COLOR_HEADER_BG)
     title_cell.alignment = _center()
     ws.row_dimensions[1].height = 30
 
     COLS = [
-        "№", "Ному насаб", "Вазифа",
-        "Рӯзҳои корӣ", "Ҳозир", "Ғоиб",
-        "Дер (рӯз)", "Барвақт рафт (рӯз)",
-        "Ҷамъи дерӣ (дақ)", "Ҷамъи барвақт (дақ)", "Эзоҳ"
+        "No.", "Full Name", "Position",
+        "Workdays", "Present", "Absent",
+        "Late (days)", "Early Departure (days)",
+        "Total Late (min)", "Total Early (min)", "Notes"
     ]
     _apply_header(ws, 2, COLS)
 
@@ -279,7 +279,7 @@ def generate_period_report(
     total_fill = PatternFill("solid", fgColor=COLOR_TOTAL_BG)
     total_font = Font(bold=True, color=COLOR_TOTAL_FG, name="Calibri", size=11)
     total_vals = [
-        "", "ҶАМЪ", "",
+        "", "TOTAL", "",
         grand_totals["workdays"], grand_totals["present"], grand_totals["absent"],
         "", "", grand_totals["late_min"], grand_totals["early_min"], ""
     ]
